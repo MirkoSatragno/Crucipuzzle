@@ -1,2 +1,4 @@
 Program/venv/*
 Program/.idea/*
+Program/Libraries/*
+Program/__pycache__/*
