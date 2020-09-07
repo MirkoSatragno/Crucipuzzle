@@ -1,3 +1,4 @@
+import math
 import cv2
 import pytesseract
 import numpy as np
@@ -13,11 +14,16 @@ pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesserac
 #print(pytesseract.image_to_string('../Sample pictures/sample.jpg'))
 #print(pytesseract.image_to_boxes('../Sample pictures/sample.jpg'))
 
-img = cv2.imread('../Sample pictures/sample.jpg')
-img2 = np.ones((img.shape[0], img.shape[1], 3), np.uint8)
-img2[:] = 255
+img_path = '../Sample pictures/sample2.jpg'
+img = cv2.imread(img_path)
+imgPreFilter = np.ones((img.shape[0], img.shape[1], 3), np.uint8)
+imgPreFilter[:] = 255
+imgPostFilter = imgPreFilter.copy()
 
-d = pytesseract.image_to_boxes('../Sample pictures/sample.jpg', output_type=Output.DICT)
+# Example of adding any additional options.
+custom_oem_psm_config = r'--psm 6'
+
+d = pytesseract.image_to_boxes(img_path, output_type=Output.DICT, config=custom_oem_psm_config)
 # print(d)
 n_boxes = len(d['char'])
 matrix = {'rows':
@@ -42,7 +48,7 @@ for i in range(n_boxes):
     #     print(c, left, right, top, bottom)
 
     # cv2.rectangle(img, (left, bottom), (right, top), color, 1)
-    cv2.putText(img2, c, (left, bottom), cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 0, 255))
+    cv2.putText(imgPreFilter, c, (left, bottom), cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 0, 255))
     # print(c)
     # print(img.shape[0])
 
@@ -73,14 +79,37 @@ for i in range(n_boxes):
     # cv2.waitKey(0)
 
 print(len(matrix['rows']))
+charCount = 0
 for i in range(0, len(matrix['rows'])):
     sorted_chars = [x for _, x in sorted(zip(matrix['rows'][i]['charHPos'],matrix['rows'][i]['chars']))]
     sorted_pos = [x for x, _ in sorted(zip(matrix['rows'][i]['charHPos'],matrix['rows'][i]['chars']))]
-    print(sorted_chars, len(sorted_chars))
+    # print(sorted_chars, len(sorted_chars))
     # print(sorted_pos)
+    matrix['rows'][i]['chars'] = sorted_chars
+    matrix['rows'][i]['charHPos'] = sorted_pos
+    charCount += len(sorted_chars)
     # print(matrix['rowVPos'][i])
     # print(matrix['rows'][i])
+charPerRow = math.floor(charCount / len(matrix['rows']))
+
+for i in range(0, len(matrix['rows'])):
+    while(len(matrix['rows'][i]['chars']) > charPerRow):
+        minDistSides = img.shape[1] * 2
+        outlier = charPerRow
+        for j in range(1, len(matrix['rows'][i]['chars'])-1):
+            distSides = matrix['rows'][i]['charHPos'][j + 1] - matrix['rows'][i]['charHPos'][j - 1]
+            if(distSides < minDistSides):
+                minDistSides = distSides
+                outlier = j
+        del matrix['rows'][i]['chars'][outlier]
+        del matrix['rows'][i]['charHPos'][outlier]
+    print(matrix['rows'][i]['chars'])
+
+for i in range(0, len(matrix['rows'])):
+    for j in range(0, len(matrix['rows'][i]['chars'])):
+        cv2.putText(imgPostFilter, matrix['rows'][i]['chars'][j], (math.floor(matrix['rows'][0]['charHPos'][j]), math.floor(matrix['rowVPos'][i])), cv2.FONT_HERSHEY_SIMPLEX, .4, 0)
 
 cv2.imshow('img', img)
-cv2.imshow('img2', img2)
+cv2.imshow('img2', imgPreFilter)
+cv2.imshow('img3', imgPostFilter)
 cv2.waitKey(0)
