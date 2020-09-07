@@ -14,6 +14,8 @@ pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesserac
 #print(pytesseract.image_to_boxes('../Sample pictures/sample.jpg'))
 
 img = cv2.imread('../Sample pictures/sample.jpg')
+img2 = np.ones((img.shape[0], img.shape[1], 3), np.uint8)
+img2[:] = 255
 
 d = pytesseract.image_to_boxes('../Sample pictures/sample.jpg', output_type=Output.DICT)
 # print(d)
@@ -36,10 +38,11 @@ for i in range(n_boxes):
         c = 'I'
     if c == '8':
         c = 'S'
-    if c == 'I':
-        print(c, left, right, top, bottom)
+    # if c == 'I':
+    #     print(c, left, right, top, bottom)
 
-    cv2.rectangle(img, (left, bottom), (right, top), color, 1)
+    # cv2.rectangle(img, (left, bottom), (right, top), color, 1)
+    cv2.putText(img2, c, (left, bottom), cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 0, 255))
     # print(c)
     # print(img.shape[0])
 
@@ -79,4 +82,5 @@ for i in range(0, len(matrix['rows'])):
     # print(matrix['rows'][i])
 
 cv2.imshow('img', img)
+cv2.imshow('img2', img2)
 cv2.waitKey(0)
