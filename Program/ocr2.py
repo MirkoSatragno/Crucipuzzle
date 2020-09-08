@@ -92,6 +92,11 @@ for i in range(0, len(matrix['rows'])):
     # print(matrix['rows'][i])
 charPerRow = math.floor(charCount / len(matrix['rows']))
 
+scale = 50
+
+charMap = np.ones((len(matrix['rows']), charPerRow, 1), np.uint8)
+charMapScaled = np.ones((len(matrix['rows'])*scale, charPerRow*scale, 1), np.uint8)
+
 for i in range(0, len(matrix['rows'])):
     while(len(matrix['rows'][i]['chars']) > charPerRow):
         minDistSides = img.shape[1] * 2
@@ -107,9 +112,17 @@ for i in range(0, len(matrix['rows'])):
 
 for i in range(0, len(matrix['rows'])):
     for j in range(0, len(matrix['rows'][i]['chars'])):
-        cv2.putText(imgPostFilter, matrix['rows'][i]['chars'][j], (math.floor(matrix['rows'][0]['charHPos'][j]), math.floor(matrix['rowVPos'][i])), cv2.FONT_HERSHEY_SIMPLEX, .4, 0)
+        cv2.putText(imgPostFilter, matrix['rows'][i]['chars'][j], #Image just for developer visualization
+                    (math.floor(matrix['rows'][0]['charHPos'][j]),
+                        math.floor(matrix['rowVPos'][i])), cv2.FONT_HERSHEY_SIMPLEX, .4, 0)
+        charMap[i, j] = (ord(matrix['rows'][i]['chars'][j]) - ord('A')) * 10
+        charMapScaled[(i*scale):((i+1)*scale), (j*scale):((j+1)*scale)] = (ord(matrix['rows'][i]['chars'][j]) - ord('A')) * 10
+
+
 
 cv2.imshow('img', img)
-cv2.imshow('img2', imgPreFilter)
+# cv2.imshow('img2', imgPreFilter)
 cv2.imshow('img3', imgPostFilter)
+cv2.imshow('charMap', charMap)
+cv2.imshow('charMapScaled', charMapScaled)
 cv2.waitKey(0)
