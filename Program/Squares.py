@@ -15,6 +15,8 @@ def printPicture(printPicture_img, printPicture_mode="default"):
     plot.xticks([]), plot.yticks([])
 
 
+
+
 # 1 IMPORT
 img_BGR = cv2.imread("../Sample pictures/10 - Copy.jpg")
 
@@ -35,22 +37,22 @@ newSortedVertexes = frameLib.getNewFrameVertexes(sortedVertexes)
 # stiracchio l'immagine, per raddrizzare un po' il quadrilatero centrale
 img_perspective = frameLib.getWarpedImage(img_RGB, sortedVertexes, newSortedVertexes)
 
-# Qui se voglio posso fare un crop dell'area interessata.
-# La cosa migliore sarebbe farla prendendo il bounding box di quella figura composta da punti usata nella getFrameVertexes, per evitare lati bombati all'infuori tagliati
-# ma ce la facciamo andar bene così. Se ci sono bordi bombati dopo il warp allora l'immagine faceva proprio schifo
-'''x0, y0, width, height = cv2.boundingRect(originalPoints)
-img_cropped = img_RGB[y0: y0 + height, x0: x0 + width]'''
 
+# 5 CROP
+img_cropped = frameLib.cropPerspective(img_perspective, newSortedVertexes)
 
-# 5 LINEE
+# 6 LINEE
 # provo a disegnare linee a caso
-img_perspective_lines = img_perspective.copy()
-cv2.line(img_perspective_lines, (1000, 500), (2500, 500), (0, 255, 0), 30)
-cv2.line(img_perspective_lines, (900, 2000), (2800, 2000), (0, 255, 0), 30)
-cv2.line(img_perspective_lines, (1050, 700), (1050, 2200), (0, 255, 0), 30)
+img_cropped_lines = img_cropped.copy()
+cv2.line(img_cropped_lines, (350, 100), (1850, 100), (0, 255, 0), 30)
+cv2.line(img_cropped_lines, (250, 1500), (2150, 1500), (0, 255, 0), 30)
+cv2.line(img_cropped_lines, (400, 200), (400, 1700), (0, 255, 0), 30)
 
 
-# 6 WARP INVERSO
+# 7 CROP INVERSO
+img_perspective_lines = frameLib.cropPrespectiveInverse(img_perspective, img_cropped_lines, newSortedVertexes)
+
+# 8 WARP INVERSO
 img_lines = frameLib.getInverseWarpedImage(img_RGB, img_perspective_lines, newSortedVertexes, sortedVertexes)
 
 ############# PRINT ################
@@ -62,8 +64,8 @@ code = [0]
 
 printPicture(img_RGB)
 # printPicture(img_BW, "gray")
-printPicture(img_perspective)
-printPicture(img_perspective_lines)
+printPicture(img_cropped)
+printPicture(img_cropped_lines)
 printPicture(img_lines)
 
 plot.show()

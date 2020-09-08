@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plot
-from Libraries import wordLibrary
+from Libraries import wordLibrary as wordLib
 
 
 def printPicture(printPicture_img, printPicture_mode="default"):
@@ -16,7 +16,7 @@ def printPicture(printPicture_img, printPicture_mode="default"):
 
 
 # 0 INPUT
-lettersDictionary = wordLibrary.getLettersDictionary()
+lettersDictionary = wordLib.getLettersDictionary()
 
 word = "dog"
 img_BW = np.array([[50, 70, 120, 30, 240, 150],
@@ -29,7 +29,7 @@ img_BW = np.array([[50, 70, 120, 30, 240, 150],
 # 1 FIND WORD
 img_final = cv2.merge((img_BW, img_BW, img_BW))
 try:
-    pointA, pointB = wordLibrary.findWord(img_BW, word, lettersDictionary)
+    pointA, pointB = wordLib.findWord(img_BW, word, lettersDictionary)
     cv2.line(img_final, pointA, pointB, (0, 255, 255), 1)
 except Exception:
     print("Oh no!")

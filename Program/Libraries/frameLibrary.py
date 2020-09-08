@@ -113,6 +113,29 @@ def getInverseWarpedImage(img_original, img_warped, newSortedVertexes, oldSorted
     return img_perspective
 
 
+
+def cropPerspective(img, perspectiveVertexes):
+    highSXPerspectivePointIndex = getHighSX(perspectiveVertexes)
+    highSXPerspectivePoint = perspectiveVertexes[highSXPerspectivePointIndex]
+    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
+    croppedWidth, croppedHeight = finalDimensions(perspectiveVertexes, highSXPerspectivePointIndex)
+
+    img_cropped = img[highSXPerspectivePoint[0][1]: highSXPerspectivePoint[0][1] + croppedHeight, highSXPerspectivePoint[0][0]: highSXPerspectivePoint[0][0] + croppedWidth]
+
+    return img_cropped
+
+def cropPrespectiveInverse(oldImg, croppedImg, perspectiveVertexes):
+    highSXPerspectivePointIndex = getHighSX(perspectiveVertexes)
+    highSXPerspectivePoint = perspectiveVertexes[highSXPerspectivePointIndex]
+    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
+    croppedWidth, croppedHeight = finalDimensions(perspectiveVertexes, highSXPerspectivePointIndex)
+
+    newImg = oldImg.copy()
+    newImg[highSXPerspectivePoint[0][1]: highSXPerspectivePoint[0][1] + croppedHeight, highSXPerspectivePoint[0][0]: highSXPerspectivePoint[0][0] + croppedWidth] = croppedImg
+
+    return newImg
+
+
 ############################################## PRIVATE METHODS ##########################################################
 # in realtà sono tutti public, ma volevo distinguere visivamente tra quali devono essere chiamati all'esterno e quali no
 
@@ -133,8 +156,7 @@ def sortVertexes(sortVertexes_vertexes, sortVertexes_sorted):
 
         sortVertexes_index = 0
         while sortVertexes_index < len(sortVertexes_vertexesList):
-            sortVertexes_distance = cv2.norm(sortVertexes_currentVertex - sortVertexes_vertexesList[sortVertexes_index],
-                                             normType=cv2.NORM_L2)
+            sortVertexes_distance = cv2.norm(sortVertexes_currentVertex - sortVertexes_vertexesList[sortVertexes_index], normType=cv2.NORM_L2)
             if (sortVertexes_distance < sortVertexes_closestDistance or sortVertexes_closestDistance == -1):
                 sortVertexes_closestDistance = sortVertexes_distance
                 sortVertexes_closestIndex = sortVertexes_index
@@ -231,6 +253,18 @@ def getNewSortedVertexes(sortedVertexes, newSortedVertexes, pivotVertexIndex, fi
 
     return
 
+'''Serve a trovare l'indice del vertice in alto a destra partendo da 4 vertici disposti a rettangolo'''
+def getHighSX(vertexes):
+    minIndex = 0
+    minValue = cv2.norm(vertexes[minIndex], normType=cv2.NORM_L2)
+
+    for index in range (1, 4):
+        value = cv2.norm(vertexes[index], normType=cv2.NORM_L2)
+        if(value < minValue):
+            minIndex = index
+            minValue = value
+
+    return minIndex
 
 '''Questo non mi ricordo dove lo usavo. Nel dubbio per ora lo tengo qui che può tornar buono
 Serve a fare un resize proporzionale dell'immagine specificando anche solo una delle 2 nuove dimensioni (altezza o larghezza)'''
