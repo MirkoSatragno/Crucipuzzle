@@ -1,7 +1,41 @@
 import cv2
 import numpy as np
 
+'''Questo mi contiene in maniera elegante i parametri che poi mi serviranno  per i procedimenti inversi di warp e crop'''
+class processedPicture:
+    def __init__(self, img_warped, img_cropped, oldVertexes, newVertexes):
+        self.img_warped = img_warped
+        self.img_cropped = img_cropped
+        self.oldVertexes = oldVertexes
+        self.newVertexes = newVertexes
+
 #################################### PUBLIC METHODS#####################################################
+'''Questo serve a riconoscere la cornice del puzzle, fare il crop per avere un'immagine stiracchiata per il riconosciemtno delle lettere
+e si salva anche qualche parametro sulla posizione di punti chiave per fare il processo inverso al crop e allo stiracchiamento quando bisognerà stamparla'''
+def processPicture(img_RGB):
+    # 0 IMPORT
+    #img_BGR = cv2.imread("../Sample pictures/10 - Copy.jpg")
+
+    # 1 COLORS
+    #img_RGB = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2RGB)
+    img_BW = cv2.cvtColor(img_RGB, cv2.COLOR_BGR2GRAY)
+
+    # 2 VERTEXES
+    # questa è la posizione dei 4 vertici del quadrilatero originale
+    sortedVertexes = getFrameVertexes(img_BW)
+    # questa è la nuova posizione dei vertici che mi server per fare il wrap
+    newSortedVertexes = getNewFrameVertexes(sortedVertexes)
+
+    # 5 AFFINE IMAGE
+    # stiracchio l'immagine, per raddrizzare un po' il quadrilatero centrale
+    img_perspective = getWarpedImage(img_RGB, sortedVertexes, newSortedVertexes)
+
+    # 5 CROP
+    img_cropped = cropPerspective(img_perspective, newSortedVertexes)
+
+    return processedPicture(img_perspective, img_cropped, sortedVertexes, newSortedVertexes)
+
+
 '''Questa funzione riceve in input l'immagine in bianco e nero (perchè sì)
 E restituisce in output un vettore dei 4 vertici della cornice del puzzle, ordinati'''
 def getFrameVertexes(img_BW):
@@ -266,9 +300,9 @@ def getHighSX(vertexes):
 
     return minIndex
 
-'''Questo non mi ricordo dove lo usavo. Nel dubbio per ora lo tengo qui che può tornar buono
+'''Questo torna ocmodo perchè la imshow della pyplot
 Serve a fare un resize proporzionale dell'immagine specificando anche solo una delle 2 nuove dimensioni (altezza o larghezza)'''
-def resizeProportional(image, newWidth=None, newHeight=None):
+def resizeProportional(image, newWidth = None, newHeight = None):
     (h, w) = image.shape[:2]
 
     if newWidth is None and newHeight is None:
