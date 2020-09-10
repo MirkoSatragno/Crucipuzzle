@@ -14,7 +14,7 @@ def getLettersDictionary():
 
     return lettersDictionary
 
-
+'''Questa funzione serve a controllare che la stringa inserita dall'utente come parola da cercare sia valida'''
 def isWordValid(string):
     if len(string) < 2:
         return False
@@ -63,12 +63,14 @@ def findWord(img_BW, word, lettersDictionary):
 
     raise Exception
 
+
 ############################################## PRIVATE METHODS ##########################################################
 '''Questo serve ad ottenere una lettera giocando coi valori ASCII'''
 def getLetter(offset):
     return chr(ord("a") + offset)
 
-'''Serve a costruire i template e le maschere per la funzione di templateMatch'''
+'''Serve a costruire i template e le maschere per la funzione di templateMatch.
+Riceve in input la parola ed una mappa <lettera, valore>, e restituisce le due liste'''
 def getTemplatesAndMasks(word, lettersDictionary):
     # creo un template per ogni possibile orientamento della parola (orizz, vert, diag, anti-diag, al contrario)
     templates = []

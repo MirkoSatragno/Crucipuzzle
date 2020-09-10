@@ -37,6 +37,7 @@ def solvePuzzle():
         time.sleep(2)
         return 0
 
+    lettersDictionary = wordLib.getLettersDictionary()
     # TODO: get greyscale matrix
 
     steadyImage = plotLibrary.plotSteadyImage(processedImgWrapper.img_cropped)
@@ -47,7 +48,10 @@ def solvePuzzle():
         word = str(input("Type a word to search for: "))
 
         if wordLib.isWordValid(word):
-            # TODO cercare la parola
+            # TODO: cercare la parola
+            # pointA, pointB = wordLib.findWord( ???? , word, lettersDictionary)
+
+            # TODO: disegnare le linee
 
             img_lines = frameLib.getFinalImage(img_BGR, processedImgWrapper.img_cropped, processedImgWrapper)
             plotLibrary.removeSteadyImage(steadyImage)
