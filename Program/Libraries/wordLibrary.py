@@ -1,10 +1,9 @@
 import cv2
 import numpy as np
+import re
 
-'''Questo serve ad ottenere una lettera giocando coi valori ASCII'''
-def getLetter(offset):
-    return chr(ord("a") + offset)
 
+#################################### PUBLIC METHODS#####################################################
 '''Costruisco una mappa (lettera, colore in scala di grigio)'''
 def getLettersDictionary():
     numbersList = range(0, 26)
@@ -15,45 +14,11 @@ def getLettersDictionary():
 
     return lettersDictionary
 
-'''Serve a costruire i template e le maschere per la funzione di templateMatch'''
-def getTemplatesAndMasks(word, lettersDictionary):
-    # creo un template per ogni possibile orientamento della parola (orizz, vert, diag, anti-diag, al contrario)
-    templates = []
 
-    # mettto tutte ste parentesi quadre perchè servono dopo per il np.array
-    horizontalColors = [[lettersDictionary[letter] for letter in word]]
-    # questo serve a creare un secondo vettore invertito
-    horizontalColorsInverse = [row[::-1] for row in horizontalColors]
-    verticalColors = [ [lettersDictionary[letter]] for letter in word ]
-    verticalColorsinverse = verticalColors[::-1]
-    diagonalColors = np.diag([lettersDictionary[letter] for letter in word])
-    diagonalColorsInverse = np.diag(*[row[::-1] for row in horizontalColors])
-    antiDiagonalColors = np.fliplr(diagonalColors)
-    antiDiagonalColorsInverse = np.fliplr(diagonalColorsInverse)
-
-    # horizontal
-    templates.append(np.array(horizontalColors))
-    templates.append(np.array(horizontalColorsInverse))
-    # vertical
-    templates.append(np.array(verticalColors))
-    templates.append(np.array(verticalColorsinverse))
-
-    masks = [np.ones(template.shape) for template in templates]
-
-    # diagonal
-    templates.append(diagonalColors)
-    templates.append(diagonalColorsInverse)
-    templates.append(antiDiagonalColors)
-    templates.append(antiDiagonalColorsInverse)
-
-    eyeMatr = np.eye(len(word))
-    masks.append(eyeMatr)
-    masks.append(eyeMatr)
-    masks.append(np.fliplr(eyeMatr))
-    masks.append(np.fliplr(eyeMatr))
-
-    return templates, masks
-
+def isWordValid(string):
+    if len(string) < 2:
+        return False
+    return re.search(r"[^A-Za-z]", string) is None
 
 '''Questo è l'algoritmo che cerca una parola dentro l'immagine grigia.
 Ritorna la posizione dei due punti agli estremi della parola trovata'''
@@ -97,3 +62,50 @@ def findWord(img_BW, word, lettersDictionary):
             return pointA, pointB
 
     raise Exception
+
+############################################## PRIVATE METHODS ##########################################################
+'''Questo serve ad ottenere una lettera giocando coi valori ASCII'''
+def getLetter(offset):
+    return chr(ord("a") + offset)
+
+'''Serve a costruire i template e le maschere per la funzione di templateMatch'''
+def getTemplatesAndMasks(word, lettersDictionary):
+    # creo un template per ogni possibile orientamento della parola (orizz, vert, diag, anti-diag, al contrario)
+    templates = []
+
+    # mettto tutte ste parentesi quadre perchè servono dopo per il np.array
+    horizontalColors = [[lettersDictionary[letter] for letter in word]]
+    # questo serve a creare un secondo vettore invertito
+    horizontalColorsInverse = [row[::-1] for row in horizontalColors]
+    verticalColors = [ [lettersDictionary[letter]] for letter in word ]
+    verticalColorsinverse = verticalColors[::-1]
+    diagonalColors = np.diag([lettersDictionary[letter] for letter in word])
+    diagonalColorsInverse = np.diag(*[row[::-1] for row in horizontalColors])
+    antiDiagonalColors = np.fliplr(diagonalColors)
+    antiDiagonalColorsInverse = np.fliplr(diagonalColorsInverse)
+
+    # horizontal
+    templates.append(np.array(horizontalColors))
+    templates.append(np.array(horizontalColorsInverse))
+    # vertical
+    templates.append(np.array(verticalColors))
+    templates.append(np.array(verticalColorsinverse))
+
+    masks = [np.ones(template.shape) for template in templates]
+
+    # diagonal
+    templates.append(diagonalColors)
+    templates.append(diagonalColorsInverse)
+    templates.append(antiDiagonalColors)
+    templates.append(antiDiagonalColorsInverse)
+
+    eyeMatr = np.eye(len(word))
+    masks.append(eyeMatr)
+    masks.append(eyeMatr)
+    masks.append(np.fliplr(eyeMatr))
+    masks.append(np.fliplr(eyeMatr))
+
+    return templates, masks
+
+
+
