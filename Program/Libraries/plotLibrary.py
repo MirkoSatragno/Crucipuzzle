@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import threading
 
 '''Questa classe definisce il thread da lanciare
@@ -14,8 +15,12 @@ class steadyImage(threading.Thread):
         while self.running:
             # il flag di window normal serve a poter regolare la size dell'immagine a piacere
             cv2.namedWindow(self.name, cv2.WINDOW_NORMAL)
+            cv2.setWindowProperty(self.name, cv2.WND_PROP_TOPMOST, 1)
             cv2.imshow(self.name, self.img)
-            cv2.waitKey()
+            cv2.waitKey(500)
+            
+    def changeImage(self, newImg):
+        self.img = newImg
 
     def stop(self):
         self.running = False
@@ -29,10 +34,31 @@ def plotSteadyImage(img, windowName = "Puzzle"):
     myThread.start()
     return myThread
 
+def changeSteadyImage(thread, newImg):
+    thread.changeImage(newImg)
+
 
 '''Ricevo il thread che sta stampando e lo fermo'''
 def removeSteadyImage(thread):
     thread.stop()
     thread.join()
 
+'''img è l'immagine dove devo disefnare
+matrixBW è la matrice in scala d grigi
+line sono gli estremi della parola trovata nella matrice grigia
+HSX e LDX sono le coordinate delle lettere estreme nell'immagine'''
+def drawLine(img, matrixBW, line, HSX, LDX):
+    height = LDX[1] - HSX[1]
+    width = LDX[0] - HSX[0]
+    heightOffset = HSX[1]
+    widthOffset = HSX[0]
+    deltaHeight = height / (matrixBW.shape[0] - 1)
+    deltaWidth = width / (matrixBW.shape[1] - 1)
+
+    point1 = (int(widthOffset + deltaWidth * line[0][0]), int(heightOffset + deltaHeight * line[0][1]))
+    point2 = (int(widthOffset + deltaWidth * line[1][0]), int(heightOffset + deltaHeight * line[1][1]))
+
+    lineThickness = int(np.sqrt(height * width / (matrixBW.shape[0] * matrixBW.shape[1])) / 8)
+
+    cv2.line(img,  point1, point2, (0, 255, 255), lineThickness)
 

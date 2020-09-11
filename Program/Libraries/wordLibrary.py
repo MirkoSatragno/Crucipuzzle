@@ -59,7 +59,7 @@ def findWord(img_BW, word, lettersDictionary):
             pointA = (max_loc[0], max_loc[1] + template.shape[0] - 1)
             pointB = (max_loc[0] + template.shape[1] - 1, max_loc[1])
 
-            return pointA, pointB
+            return [pointA, pointB]
 
     raise Exception
 

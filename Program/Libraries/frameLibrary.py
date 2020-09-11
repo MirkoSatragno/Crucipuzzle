@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from . import plotLibrary as plotLib
 
 '''Questo mi contiene in maniera elegante i parametri che poi mi serviranno  per i procedimenti inversi di warp e crop'''
 class processedPicture:
@@ -24,20 +25,20 @@ def processImage(img_BGR):
 
     # 3 AFFINE IMAGE
     # stiracchio l'immagine, per raddrizzare un po' il quadrilatero centrale
-    img_perspective = getWarpedImage(img_BGR, sortedVertexes, newSortedVertexes)
+    img_warped = getWarpedImage(img_BGR, sortedVertexes, newSortedVertexes)
 
     # 4 CROP
-    img_cropped = cropPerspective(img_perspective, newSortedVertexes)
+    img_cropped = cropImage(img_warped, newSortedVertexes)
 
-    return processedPicture(img_perspective, img_cropped, sortedVertexes, newSortedVertexes)
+    return processedPicture(img_warped, img_cropped, sortedVertexes, newSortedVertexes)
 
 
 def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
     # 1 CROP INVERSO
-    img_perspective_lines = cropPrespectiveInverse(processedPictureWrapper.img_warped, img_cropped_lines, processedPictureWrapper.newVertexes)
+    img_crop_lines = cropImageInverse(processedPictureWrapper.img_warped, img_cropped_lines, processedPictureWrapper.newVertexes)
 
     # 2 WARP INVERSO
-    img_lines = getInverseWarpedImage(img_BGR, img_perspective_lines, processedPictureWrapper.newVertexes, processedPictureWrapper.oldVertexes)
+    img_lines = getInverseWarpedImage(img_BGR, img_crop_lines, processedPictureWrapper.newVertexes, processedPictureWrapper.oldVertexes)
 
     return img_lines
 
@@ -115,58 +116,8 @@ def getNewFrameVertexes(sortedVertexes):
     return newSortedVertexes
 
 
-def getWarpedImage(img_RGB, sortedVertexes, newSortedVertexes):
-
-    # no, questo non fa al caso nostro
-    """pivotVertexIndex = longestSideVertexIndex(sortedVertexes)
-    originalPoints = np.float32([sortedVertexes[(pivotVertexIndex - 1) % 4], sortedVertexes[pivotVertexIndex], sortedVertexes[(pivotVertexIndex + 1) % 4]])
-    traslatedPoints = np.float32([newSortedVertexes[(pivotVertexIndex - 1) % 4], newSortedVertexes[pivotVertexIndex], newSortedVertexes[(pivotVertexIndex + 1) % 4]])
-    affineMatrix = cv2.getAffineTransform(originalPoints, traslatedPoints)
-    img_affine = cv2.warpAffine(img_RGB, affineMatrix, (img_RGB.shape[1], img_RGB.shape[0]))"""
-
-    perspectiveMatrix = cv2.getPerspectiveTransform(np.asarray(sortedVertexes, np.float32), np.asarray(newSortedVertexes, np.float32))
-    img_perspective = cv2.warpPerspective(img_RGB, perspectiveMatrix, (img_RGB.shape[1], img_RGB.shape[0]))
-
-    return img_perspective
 
 
-def getInverseWarpedImage(img_original, img_warped, newSortedVertexes, oldSortedVertexes):
-
-    # questa è ancora troncata
-    img_perspectiveCropped = getWarpedImage(img_warped, newSortedVertexes, oldSortedVertexes)
-
-    img_perspective = img_perspectiveCropped.copy()
-    # è per il colore nero
-    zeroArray = np.array([0, 0, 0])
-
-    # axis ha a che fare col metodo di riduzione, perchè se non lo specifico mi restituisce un univo boolean finale per tutta la matrix
-    # non sono certo del perchè vada = 2, ma mi sembra fondamentale altrimenti non funziona
-    colors_match = np.all(img_perspective[:, :] == zeroArray, axis = 2)
-    img_perspective[colors_match] = img_original[colors_match]
-    return img_perspective
-
-
-
-def cropPerspective(img, perspectiveVertexes):
-    highSXPerspectivePointIndex = getHighSX(perspectiveVertexes)
-    highSXPerspectivePoint = perspectiveVertexes[highSXPerspectivePointIndex]
-    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
-    croppedWidth, croppedHeight = finalDimensions(perspectiveVertexes, highSXPerspectivePointIndex)
-
-    img_cropped = img[highSXPerspectivePoint[0][1]: highSXPerspectivePoint[0][1] + croppedHeight, highSXPerspectivePoint[0][0]: highSXPerspectivePoint[0][0] + croppedWidth]
-
-    return img_cropped
-
-def cropPrespectiveInverse(oldImg, croppedImg, perspectiveVertexes):
-    highSXPerspectivePointIndex = getHighSX(perspectiveVertexes)
-    highSXPerspectivePoint = perspectiveVertexes[highSXPerspectivePointIndex]
-    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
-    croppedWidth, croppedHeight = finalDimensions(perspectiveVertexes, highSXPerspectivePointIndex)
-
-    newImg = oldImg.copy()
-    newImg[highSXPerspectivePoint[0][1]: highSXPerspectivePoint[0][1] + croppedHeight, highSXPerspectivePoint[0][0]: highSXPerspectivePoint[0][0] + croppedWidth] = croppedImg
-
-    return newImg
 
 
 ############################################## PRIVATE METHODS ##########################################################
@@ -294,6 +245,50 @@ def getHighSX(vertexes):
             minValue = value
 
     return minIndex
+
+
+def cropImage(img, croppedVertexes):
+    highSXCroppedPointIndex = getHighSX(croppedVertexes)
+    highSXCroppedPoint = croppedVertexes[highSXCroppedPointIndex]
+    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
+    croppedWidth, croppedHeight = finalDimensions(croppedVertexes, highSXCroppedPointIndex)
+
+    img_cropped = img[highSXCroppedPoint[0][1]: highSXCroppedPoint[0][1] + croppedHeight, highSXCroppedPoint[0][0]: highSXCroppedPoint[0][0] + croppedWidth]
+
+    return img_cropped
+
+def cropImageInverse(oldImg, croppedImg, CroppedVertexes):
+    highSXCroppedePointIndex = getHighSX(CroppedVertexes)
+    highSXCroppedPoint = CroppedVertexes[highSXCroppedePointIndex]
+    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
+    croppedWidth, croppedHeight = finalDimensions(CroppedVertexes, highSXCroppedePointIndex)
+
+    newImg = oldImg.copy()
+    newImg[highSXCroppedPoint[0][1]: highSXCroppedPoint[0][1] + croppedHeight, highSXCroppedPoint[0][0]: highSXCroppedPoint[0][0] + croppedWidth] = croppedImg
+
+    return newImg
+
+def getWarpedImage(img_RGB, sortedVertexes, newSortedVertexes):
+
+    croppedMatrix = cv2.getPerspectiveTransform(np.asarray(sortedVertexes, np.float32), np.asarray(newSortedVertexes, np.float32))
+    img_warped = cv2.warpPerspective(img_RGB, croppedMatrix, (img_RGB.shape[1], img_RGB.shape[0]))
+
+    return img_warped
+
+
+def getInverseWarpedImage(img_original, img_warped, newSortedVertexes, oldSortedVertexes):
+
+    # questa è ancora troncata
+    img_unwarped = getWarpedImage(img_warped, newSortedVertexes, oldSortedVertexes)
+
+    # axis ha a che fare col metodo di riduzione, perchè se non lo specifico mi restituisce un univo boolean finale per tutta la matrix
+    # non sono certo del perchè vada = 2, ma mi sembra fondamentale altrimenti non funziona
+    colors_match = np.all(img_unwarped < 200, axis = 2)
+    img_unwarped[colors_match] = img_original[colors_match]
+
+    return img_unwarped
+
+
 
 '''Questo torna ocmodo perchè la imshow della pyplot
 Serve a fare un resize proporzionale dell'immagine specificando anche solo una delle 2 nuove dimensioni (altezza o larghezza)'''

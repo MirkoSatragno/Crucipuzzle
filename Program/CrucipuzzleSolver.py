@@ -1,10 +1,11 @@
 import cv2
+import numpy as np
 # per il file dialog
 import tkinter as tk
 from tkinter import filedialog
 import time
 
-from Libraries import plotLibrary
+from Libraries import plotLibrary as plotLib
 from Libraries import frameLibrary as frameLib
 from Libraries import wordLibrary as wordLib
 
@@ -30,15 +31,18 @@ def getBGRCameraPicture():
 
     while True:
         ret, frame = capture.read()
-        frame = cv2.flip(frame, 1)
+        #frame = cv2.flip(frame, 1)
 
         cv2.imshow(captureWindowName, frame)
-
+        cv2.setWindowProperty(captureWindowName, cv2.WND_PROP_TOPMOST, 1)
         if cv2.waitKey(50) & 0xFF == ord('p'):
             break
 
     capture.release()
     cv2.destroyWindow(captureWindowName)
+
+    # lo rigiro un'altra volta o le lettere sono al contrario
+    # frame = cv2.flip(frame, 1)
     return frame
 
 def solvePuzzle(inputMethod):
@@ -71,8 +75,11 @@ def solvePuzzle(inputMethod):
     lettersDictionary = wordLib.getLettersDictionary()
     # TODO: get greyscale matrix
 
-    steadyImage = plotLibrary.plotSteadyImage(processedImgWrapper.img_cropped)
-    print("\nPicture has been acquired correctly. Now you can start typing words.\nWhen you're done, press \"Q\" to quit.\n")
+    # serve se lo user vuole pulire l'immagine
+    originalImg_cropped = processedImgWrapper.img_cropped.copy()
+    steadyImage = plotLib.plotSteadyImage(img_BGR)
+    print("\nPicture has been acquired correctly. Now you can start typing words.")
+    print("If you want to clean the picture press \"C\".\nWhen you're done, press \"Q\" to quit.\n")
 
     word = ""
     while word != "q":
@@ -80,19 +87,30 @@ def solvePuzzle(inputMethod):
 
         if wordLib.isWordValid(word):
             # TODO: cercare la parola
-            # pointA, pointB = wordLib.findWord( ???? , word, lettersDictionary)
+            # line = wordLib.findWord( img_BGR , word, lettersDictionary)
 
-            # TODO: disegnare le linee
+            # qui faccio finta di avere una matrice nell'attesa di ricevere quella vera
+            word = "dog"
+            img_BW = np.array([[50, 70, 120, 30, 240, 150],
+                               [20, 70, 250, 80, 90, 100],
+                               [30, 140, 50, 130, 70, 150],
+                               [30, 140, 60, 100, 160, 50],
+                               [210, 60, 40, 200, 250, 20]])
+
+            plotLib.drawLine(processedImgWrapper.img_cropped, img_BW, [(1, 0), (5, 4)], (50, 50), (600, 550))
 
             img_lines = frameLib.getFinalImage(img_BGR, processedImgWrapper.img_cropped, processedImgWrapper)
-            plotLibrary.removeSteadyImage(steadyImage)
-            steadyImage = plotLibrary.plotSteadyImage(img_lines)
+            plotLib.changeSteadyImage(steadyImage, img_lines)
         else:
-            if word != "q":
-                print("Invalid string: " + word)
+            if word == "c":
+                processedImgWrapper.img_cropped = originalImg_cropped.copy()
+                plotLib.changeSteadyImage(steadyImage, processedImgWrapper.img_cropped)
+            else:
+                if word != "q" and word != "c":
+                    print("Invalid string: " + word)
 
 
-    plotLibrary.removeSteadyImage(steadyImage)
+    plotLib.removeSteadyImage(steadyImage)
     return
 
 
