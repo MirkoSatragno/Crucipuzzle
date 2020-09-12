@@ -31,30 +31,23 @@ def getBGRCameraPicture():
 
     while True:
         ret, frame = capture.read()
-        #frame = cv2.flip(frame, 1)
-
         cv2.imshow(captureWindowName, frame)
-        cv2.setWindowProperty(captureWindowName, cv2.WND_PROP_TOPMOST, 1)
+
         if cv2.waitKey(50) & 0xFF == ord('p'):
             break
 
     capture.release()
     cv2.destroyWindow(captureWindowName)
 
-    # lo rigiro un'altra volta o le lettere sono al contrario
-    # frame = cv2.flip(frame, 1)
     return frame
 
 def solvePuzzle(inputMethod):
 
     if inputMethod == "1":
-        try:
-            print("Press \"P\" to take a picture")
-            img_BGR = getBGRCameraPicture()
-        except FileNotFoundError:
-            print("Picture not found")
-            time.sleep(2)
-            return 0
+        print("Press \"P\" to take a picture")
+        print("(Please, mind that the pop up camera window must be your selected window, in order to take the picture)")
+        img_BGR = getBGRCameraPicture()
+
     else:
         try:
             print("Select a picture")

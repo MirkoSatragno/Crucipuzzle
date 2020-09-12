@@ -42,6 +42,12 @@ def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
 
     return img_lines
 
+
+
+
+############################################## PRIVATE METHODS ##########################################################
+# in realtà sono tutti public, ma volevo distinguere visivamente tra quali devono essere chiamati all'esterno e quali no
+
 '''Questa funzione riceve in input l'immagine in bianco e nero (perchè sì)
 E restituisce in output un vettore dei 4 vertici della cornice del puzzle, ordinati'''
 def getFrameVertexes(img_BW):
@@ -115,13 +121,6 @@ def getNewFrameVertexes(sortedVertexes):
 
     return newSortedVertexes
 
-
-
-
-
-
-############################################## PRIVATE METHODS ##########################################################
-# in realtà sono tutti public, ma volevo distinguere visivamente tra quali devono essere chiamati all'esterno e quali no
 
 '''Questa funzione riordina i vertici del quadrilatero in modo da averli adiacenti uno dopo l'altro.
 Non so se alla fine sono in ordine orario o antioriario, nè in che posizione sia il primo, ma non mi interessa'''
