@@ -104,7 +104,7 @@ def solvePuzzle(inputMethod):
         else:
             if word == "c":
                 processedImgWrapper.img_cropped = originalImg_cropped.copy()
-                plotLib.changeSteadyImage(steadyImage, processedImgWrapper.img_cropped)
+                plotLib.changeSteadyImage(steadyImage, img_BGR)
             else:
                 if word != "q" and word != "c":
                     print("Invalid string: " + word)
