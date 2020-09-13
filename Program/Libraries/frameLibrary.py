@@ -43,7 +43,27 @@ def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
     return img_lines
 
 
+# mi aspetto un'immaigne in binco e nero
+def preprocessingOCRImage(img):
+    # tutti 'sti valori sono stati trovati in maniera empirica ... a tentativi e forza bruta
+    # 0 LINEAR IMAGE LENGTH
+    linearImageLength = int(np.sqrt(img.shape[0] * img.shape[1]))
 
+    # 1 BLUR
+    img = cv2.GaussianBlur(img, (3, 3), 0)
+
+    # 2 ADAPTIVE THRESHOLDING
+    oddBlockSize = int(linearImageLength * 10/ 400) * 2 + 3
+    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, oddBlockSize, 15)
+
+    # 3 CLOSURE
+    closeKernelSize2 = int(linearImageLength / 1500) * 2 + 1
+    closeKernel = np.ones((closeKernelSize2, closeKernelSize2))
+    img_closed = cv2.morphologyEx(img_thresh, cv2.MORPH_CLOSE, closeKernel, iterations = 1)
+
+    img_closed = 255 - img_closed
+
+    return img_closed
 
 ############################################## PRIVATE METHODS ##########################################################
 # in realtà sono tutti public, ma volevo distinguere visivamente tra quali devono essere chiamati all'esterno e quali no
@@ -51,7 +71,8 @@ def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
 '''Questa funzione riceve in input l'immagine in bianco e nero (perchè sì)
 E restituisce in output un vettore dei 4 vertici della cornice del puzzle, ordinati'''
 def getFrameVertexes(img_BW):
-    # 1 non so se e quanto sia utile, ma gli youtuber più esperti di me lo usano e per ora mi fido
+    # 1 BLUR
+    # non so se e quanto sia utile, ma gli youtuber più esperti di me lo usano e per ora mi fido
     img_blurred = cv2.GaussianBlur(img_BW, (7, 7), 0)
 
     # 2 ADAPTIVE THRESHOLD
