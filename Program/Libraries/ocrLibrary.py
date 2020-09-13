@@ -27,6 +27,7 @@ def getCharMap(img=None, debug=False):
 
     matrix = RemoveOutliers(matrix, charPerRow, img)
 
+    # Prepare empty pixel matrix
     charMap = np.ones((len(matrix['rows']), charPerRow, 1), np.uint8)
     if debug:
         scale = 50
@@ -36,9 +37,9 @@ def getCharMap(img=None, debug=False):
     for i in range(0, len(matrix['rows'])):
         for j in range(0, len(matrix['rows'][i]['chars'])):
             charMap[i, j] = (ord(matrix['rows'][i]['chars'][j]) - ord('A')) * 10
-            if debug:
-                cv2.putText(imgPostFilter, matrix['rows'][i]['chars'][j],  # Image just for developer visualization
-                            (math.floor(matrix['rows'][0]['charHPos'][j]),
+            if debug:  # Enlarged pixel matrix, just for developer visualization
+                cv2.putText(imgPostFilter, matrix['rows'][i]['chars'][j],
+                            (math.floor( matrix['rows'][0]['charHPos'][j] if len(matrix['rows'][0]['chars']) > j else matrix['rows'][i]['charHPos'][j]),
                              math.floor(matrix['rowVPos'][i])), cv2.FONT_HERSHEY_SIMPLEX, .4, 0)
                 charMapScaled[(i * scale):((i + 1) * scale), (j * scale):((j + 1) * scale)] = (ord(
                     matrix['rows'][i]['chars'][j]) - ord('A')) * 10
@@ -62,16 +63,20 @@ Returns dictionary and image
 
 def ImgToPytesseractDict(img):
     if img is None:
-        img_path = '../../Sample pictures/sample8.jpg'
+        img_path = '../../Sample pictures/sample5.jpg'
         img = cv2.imread(img_path)
-        # img = frameLib.processImage(img).img_cropped
-    # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img = frameLib.processImage(img).img_cropped
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     # cv2.imshow('img', img)
+    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
+
+    cv2.imshow('img', img_thresh)
+    cv2.waitKey(0)
 
     custom_oem_psm_config = r'--psm 6'
+    d = pytesseract.image_to_boxes(img_thresh, output_type=pytesseract.Output.DICT, config=custom_oem_psm_config)
+    return d, img_thresh
 
-    d = pytesseract.image_to_boxes(img, output_type=pytesseract.Output.DICT, config=custom_oem_psm_config)
-    return d, img
 
 
 '''
@@ -82,7 +87,8 @@ If the blank copy is passed it is filled with recognized characters
 def ReorderDictIntoMatrix(d, img, imgPreFilter = None, debug = False):
     n_boxes = len(d['char'])
     matrix = {'rows': [],
-              'rowVPos': []}
+              'rowVPos': [],
+              'dims': []}
     for i in range(n_boxes):
         (c, left, top, right, bottom) = (
             d['char'][i], d['left'][i], img.shape[0] - d['top'][i], d['right'][i], img.shape[0] - d['bottom'][i])
@@ -99,9 +105,7 @@ def ReorderDictIntoMatrix(d, img, imgPreFilter = None, debug = False):
             c = c.upper()
         if c == '1':
             c = 'I'
-        if c == 'T' and right - left < (bottom - top) / 2:
-            c = 'I'
-        if c == 'L' and right - left < (bottom - top) / 2:
+        if (c == 'L' or c == 'T' or c == 'E' or c == 'P' or c == 'S') and right - left < (bottom - top) / 2:
             c = 'I'
         if c == '8':
             c = 'S'
@@ -126,11 +130,12 @@ def ReorderDictIntoMatrix(d, img, imgPreFilter = None, debug = False):
             # print('top ' + top.__str__())
             # print('bottom ' + bottom.__str__())
             # print('matrix ' + matrix['rowVPos'][j].__str__() + ' j ' + j.__str__())
-            if top < matrix['rowVPos'][j] < bottom:
+            if top - (bottom - top)/2 < matrix['rowVPos'][j] < bottom + (bottom - top)/2:
                 inserted = True
                 # print('inserted')
                 matrix['rows'][j]['chars'].append(c)
                 matrix['rows'][j]['charHPos'].append(x)
+                matrix['dims'][j].append((bottom-top, right-left))
                 # print(matrix['rows'])
             else:
                 # print('not inserted')
@@ -142,6 +147,7 @@ def ReorderDictIntoMatrix(d, img, imgPreFilter = None, debug = False):
             # print('matrix ' + len(matrix['rowVPos']).__str__())
             matrix['rowVPos'].append(y)
             matrix['rows'].append({'chars': [c], 'charHPos': [x]})
+            matrix['dims'].append([(bottom-top, right-left)])
             # print(matrix['rows'])
 
     if debug:
@@ -153,14 +159,24 @@ def ReorderDictIntoMatrix(d, img, imgPreFilter = None, debug = False):
     for i in range(0, len(matrix['rows'])):
         sorted_chars = [x for _, x in sorted(zip(matrix['rows'][i]['charHPos'], matrix['rows'][i]['chars']))]
         sorted_pos = [x for x, _ in sorted(zip(matrix['rows'][i]['charHPos'], matrix['rows'][i]['chars']))]
+        sorted_dims = [x for _, x in sorted(zip(matrix['rows'][i]['charHPos'], matrix['dims'][i]))]
         # print(sorted_chars, len(sorted_chars))
         # print(sorted_pos)
         matrix['rows'][i]['chars'] = sorted_chars
         matrix['rows'][i]['charHPos'] = sorted_pos
+        matrix['dims'][i] = sorted_dims
         charCount += len(sorted_chars)
         if debug:
             print(matrix['rowVPos'][i])
             print(matrix['rows'][i])
+            print(matrix['dims'][i])
+    sorted_rows = [x for _, x in sorted(zip(matrix['rowVPos'], matrix['rows']))]
+    sorted_rowVPos = [x for x, _ in sorted(zip(matrix['rowVPos'], matrix['rows']))]
+    sorted_dimsRow = [x for _, x in sorted(zip(matrix['rowVPos'], matrix['dims']))]
+    matrix['rows'] = sorted_rows
+    matrix['rowVPos'] = sorted_rowVPos
+    matrix['dims'] = sorted_dimsRow
+
     charPerRow = math.floor(charCount / len(matrix['rows']))
     return matrix, charPerRow
 
@@ -170,17 +186,31 @@ Removes from each row that has more characters than other rows the character (or
 Returns polished matrix
 '''
 def RemoveOutliers(matrix, charPerRow, img, debug = False):
+    meanHeight = math.fsum([x for x in [item[0] for sublist in matrix['dims'] for item in sublist]]) / len(
+        ([item[0] for sublist in matrix['dims'] for item in sublist]))
+    meanWidth = math.fsum([y for y in [item[1] for sublist in matrix['dims'] for item in sublist]]) / len(
+        ([item[1] for sublist in matrix['dims'] for item in sublist]))
+    if debug:
+        print(meanHeight, meanWidth)
     for i in range(0, len(matrix['rows'])):
         while len(matrix['rows'][i]['chars']) > charPerRow:
             minDistSides = img.shape[1] * 2
             outlier = charPerRow
-            for j in range(1, len(matrix['rows'][i]['chars']) - 1):
-                distSides = matrix['rows'][i]['charHPos'][j + 1] - matrix['rows'][i]['charHPos'][j - 1]
-                if distSides < minDistSides:
-                    minDistSides = distSides
+            for j in range(0, len(matrix['rows'][i]['chars'])):
+                if matrix['dims'][i][j][0] < meanHeight/2:
                     outlier = j
+                    break;
+                else:
+                    if 1 < j < len(matrix['rows'][i]['chars']) -1:
+                        distSides = matrix['rows'][i]['charHPos'][j + 1] - matrix['rows'][i]['charHPos'][j - 1]
+                        if distSides < minDistSides:
+                            minDistSides = distSides
+                            outlier = j
+            if debug:
+                print(matrix['dims'][i][j])
             del matrix['rows'][i]['chars'][outlier]
             del matrix['rows'][i]['charHPos'][outlier]
+            del matrix['dims'][i][j]
         if debug:
             print(matrix['rows'][i]['chars'])
     return matrix
