@@ -9,6 +9,15 @@ pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesserac
 '''
 Expect crucipuzzle cropped opencv image
 Returns matrix of grayscale pixels, each pixel corresponds to a letter, check wordLibrary.py for further details
+    and also data matrix with chars, positions and sizes organized as follows:
+    matrix: {
+        'rowVPos':[], # matrix['rowVPos'][i] is vertical coordinate of i-th row
+        'rows':{ # matrix['rows'][i] is i-th row
+            'chars':[], # matrix['rows'][i]['chars'][j] is j-th character of i-th row
+            'charHPos':[] # matrix['rows'][i]['charHPos'][j] is j-th character of i-th row horizontal position
+        },
+        'dims':[[(h,w)]] # matrix['dims'][i][j] are j-th character of i-th row sizes in a tuple: (height, width)
+    }
 '''
 def getCharMap(img=None, debug=False):
     d, img = ImgToPytesseractDict(img)
@@ -51,7 +60,7 @@ def getCharMap(img=None, debug=False):
         cv2.imshow('charMapScaled', charMapScaled)
         cv2.waitKey(0)
 
-    return charMap
+    return charMap, matrix
 
 
 '''
