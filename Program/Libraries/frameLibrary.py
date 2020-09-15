@@ -15,7 +15,7 @@ class processedPicture:
 e si salva anche qualche parametro sulla posizione di punti chiave per fare il processo inverso al crop e allo stiracchiamento quando bisognerà stamparla'''
 def processImage(img_BGR):
     # 1 COLORS
-    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_RGB2GRAY)
+    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
 
     # 2 VERTEXES
     # questa è la posizione dei 4 vertici del quadrilatero originale
@@ -47,14 +47,15 @@ def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
 def preprocessingOCRImage(img):
     # tutti 'sti valori sono stati trovati in maniera empirica ... a tentativi e forza bruta
     # 0 LINEAR IMAGE LENGTH
-    linearImageLength = int(np.sqrt(img.shape[0] * img.shape[1]))
+    linearImageLength = min([img.shape[0],img.shape[1]])
 
     # 1 BLUR
-    img = cv2.GaussianBlur(img, (3, 3), 0)
+    #img = cv2.GaussianBlur(img, (3, 3), 0)
 
     # 2 ADAPTIVE THRESHOLDING
-    oddBlockSize = int(linearImageLength * 10/ 400) * 2 + 3
-    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, oddBlockSize, 15)
+    oddBlockSize = int(linearImageLength * 20/ 800) * 2 + 3
+    bohSize = int(linearImageLength * 70/10000) * 2 + 3
+    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C , cv2.THRESH_BINARY_INV, oddBlockSize, bohSize)
 
     # 3 CLOSURE
     closeKernelSize2 = int(linearImageLength / 1500) * 2 + 1
