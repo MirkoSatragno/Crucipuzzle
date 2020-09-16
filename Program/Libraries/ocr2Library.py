@@ -30,155 +30,205 @@ class PreOCRParameters:
         self.meanWidth = (right - left)/(columns - 1)
         self.meanHeight = (bottom - top)/(rows - 1)
 
-def wordsList(data):
-    words = [w for w in data.split("\n")]
-    words = list(filter(lambda w: w != "\f", words))
 
-    mean = statistics.mean([len(word) for word in words])
-    threshold = int(mean * 0.5)
-    words = list(filter(lambda word: len(word) > threshold, words))
-
-    return words
-
-def getCharactersLists(img):
+'''E' un metodo abbastanza preciso per trovare il numero di righe di un puzzle.
+Riceve in input un'immagine binaria'''
+def getRowsNumber(img_thresh):
+    # data contiene una stringa unica con tutto il risultato
     config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
-    data = pytesseract.image_to_boxes(img, config=config)
+    data = pytesseract.image_to_string(img_thresh, config = config)
+
+    word_strings = [w for w in data.split("\n")]
+    word_strings = list(filter(lambda w: w != "\f", word_strings))
+
+    # filtro via tutte le righe troppo corte perchè verosimilmente sono outliers
+    meanLength = statistics.mean([len(word) for word in word_strings])
+    lengthThreshold = int(meanLength * 0.5)
+    word_strings = list(filter(lambda word: len(word) > lengthThreshold, word_strings))
+    rowsNumber = len(word_strings)
+
+    return rowsNumber
+
+
+'''Questa funzione legge tutte le lettere possibili, le trasforma in oggetti CharacterWrapper e ne fa una lista.
+In input riceve un'immagine binaria del puzzle'''
+def getCharactersLists(img_thresh):
+    config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
+    data = pytesseract.image_to_boxes(img_thresh, config = config)
 
     data_split = list([row] for row in data.split("\n"))
-    data_split_filtered = list(filter(lambda lis: lis[0] != "", data_split))
+    data_split_filtered = list(filter(lambda row: row[0] != "", data_split))
     data_matrix = [[element for element in row[0].split(" ")] for row in data_split_filtered]
 
-    lists = [ CharacterWrapper(el[0], int(el[1]), img.shape[0] - int(el[2]), int(el[3]), img.shape[0] - int(el[4])) for el in data_matrix ]
+    # il sistema di riferimento usato da pytesseract per le righe è invertito
+    charactersLists = [ CharacterWrapper(el[0], int(el[1]), img_thresh.shape[0] - int(el[2]), int(el[3]), img_thresh.shape[0] - int(el[4])) for el in data_matrix ]
 
-    return lists
+    return charactersLists
 
-def filterBySize(data):
 
-    # le I son troppo piccole
-    data_noI = list(filter(lambda el:  el.char != "I", data))
+'''Questo metodo riceve in input una lista di CharactersWrapper e deve filtrare via quelli troppo grandi e troppo piccoli.
+Il risultato è una lista di CharacterWrapper con solo caratteri di dimensione uniforme fra loro'''
+def filterBySize(charactersList):
 
-    data_areas = list(el.width * el.height for el in data_noI)
-    meanArea = statistics.mean(data_areas)
-    data_filteredAreas = list(filter(lambda el: el.width * el.height < meanArea * 1.5, data_noI))
-    newData_areas =  list(el.width * el.height for el in data_filteredAreas)
-    newMeanArea = statistics.mean(newData_areas)
+    # le I son troppo piccole e le scarto
+    chars_noI = list(filter(lambda el:  el.char != "I", charactersList))
+
+
+    # scarto tutte le aree troppo grandi o troppo piccole
+    charAreas = list(el.width * el.height for el in chars_noI)
+    meanArea = statistics.mean(charAreas)
+    chars_filteredAreas = list(filter(lambda el: el.width * el.height < meanArea * 1.5, chars_noI))
+    newCharAreas =  list(el.width * el.height for el in chars_filteredAreas)
+    newMeanArea = statistics.mean(newCharAreas)
 
     while meanArea != newMeanArea:
         meanArea = newMeanArea
 
-        data_filteredAreas = list(filter(lambda el: meanArea * 0.5 < el.width * el.height < meanArea * 1.5, data_filteredAreas))
-        newData_areas = list(el.width * el.height for el in data_filteredAreas)
-        newMeanArea = statistics.mean(newData_areas)
+        chars_filteredAreas = list(filter(lambda el: meanArea * 0.5 < el.width * el.height < meanArea * 1.5, chars_filteredAreas))
+        newCharAreas = list(el.width * el.height for el in chars_filteredAreas)
+        newMeanArea = statistics.mean(newCharAreas)
 
-    data_width = list(el.width for el in data_filteredAreas)
-    meanWidth = statistics.mean(data_width)
-    data_filteredWidth  = list(filter(lambda el: meanWidth * 0.7 <el.width < meanWidth * 1.4 , data_filteredAreas))
-    newdataWidth = list(el.width for el in data_filteredWidth)
-    newMeanWidth = statistics.mean(newdataWidth)
+
+    # scarto tutte le aree con ampiezza troppo piccola
+    charWidths = list(el.width for el in chars_filteredAreas)
+    meanWidth = statistics.mean(charWidths)
+    chars_filteredWidth  = list(filter(lambda el: meanWidth * 0.7 <el.width < meanWidth * 1.4 , chars_filteredAreas))
+    newCharWidths = list(el.width for el in chars_filteredWidth)
+    newMeanWidth = statistics.mean(newCharWidths)
 
     while meanWidth != newMeanWidth:
         meanWidth = newMeanWidth
 
-        data_filteredWidth = list(filter(lambda el: meanWidth * 0.7 < el.width < meanWidth * 1.4, data_filteredWidth))
-        newdataWidth = list(el.width for el in data_filteredWidth)
-        newMeanWidth = statistics.mean(newdataWidth)
+        chars_filteredWidth = list(filter(lambda el: meanWidth * 0.7 < el.width < meanWidth * 1.4, chars_filteredWidth))
+        newCharWidths = list(el.width for el in chars_filteredWidth)
+        newMeanWidth = statistics.mean(newCharWidths)
 
-    return data_filteredWidth
 
-def isSameColumn(el1, el2):
-    if el2.left < el1.pos[0] < el2.right:
-        return True
+    # scarto tutte le aree con altezza troppo piccola
+    charHeights = list(el.width for el in chars_filteredWidth)
+    meanHeight = statistics.mean(charHeights)
+    chars_filteredHeight = list(filter(lambda el: meanHeight * 0.7 < el.width < meanHeight * 1.3, chars_filteredWidth))
+    newCharHeights = list(el.width for el in chars_filteredHeight)
+    newMeanHeight = statistics.mean(newCharHeights)
 
-    return False
+    while meanHeight != newMeanHeight:
+        meanHeight = newMeanHeight
 
-def getHorizontalMatrix(lists):
+        chars_filteredHeight = list(filter(lambda el: meanHeight * 0.7 < el.width < meanHeight * 1.3, chars_filteredHeight))
+        newCharHeights = list(el.width for el in chars_filteredHeight)
+        newMeanHeight = statistics.mean(newCharHeights)
+
+    return chars_filteredHeight
+
+
+
+'''Questa funzione serve a trasformare un lista di caratteri in una matrice di righe del puzzle'''
+def getHorizontalMatrix(charactersList):
+
+    '''Per riordinarle mi baso sull'assunzione che le lettere sono già ordinate per righe quando vengono riconosciute.
+    Tutto ciò che devo fare è capire dove finiscono le righe, perchè nelle varie righe non tutte e lettere sono state riconosciute'''
     horizMatrix = []
-    index = 0
+    rowIndex = 0
     previousEl = None
-    for el in lists:
+    for el in charactersList:
         if len(horizMatrix) == 0:
             horizMatrix.append([el])
             previousEl = el
             continue
 
         if previousEl.pos[0] < el.pos[0]:
-            horizMatrix[index].append(el)
+            horizMatrix[rowIndex].append(el)
             previousEl = el
         else:
             horizMatrix.append([el])
             previousEl = el
-            index = index + 1
+            rowIndex = rowIndex + 1
 
-    maxLen = max([len(row) for row in horizMatrix])
-    horizMatrix = list(filter(lambda row: maxLen * 0.5 < len(row), horizMatrix))
+    # alla fine filtro sulla lunghezza delle righe per rimuovere gli outliers
+    maxRowLength = max([len(row) for row in horizMatrix])
+    horizMatrix = list(filter(lambda row: maxRowLength * 0.5 < len(row), horizMatrix))
 
     return horizMatrix
 
-def getVerticalMatrix(lists):
+
+'''Questa funzione serve alla funzione di getVerticalMatrix per capire se una lettera appartiene ad una specifica colonna'''
+def doesBelongToColumn(currentChar, vertMatrix, columnIndex):
+    lastCharAddedInColumn_Index = len(vertMatrix[columnIndex]) - 1
+    lastCharAddedInColumn = vertMatrix[columnIndex][lastCharAddedInColumn_Index]
+
+    if lastCharAddedInColumn.left < currentChar.pos[0] < lastCharAddedInColumn.right:
+        return True
+
+    return False
+
+
+'''Questa funzione serve a trasformare un lista di caratteri in una matrice di colonne del puzzle'''
+def getVerticalMatrix(charactersList):
+
+    # per dividerli in colonne confronto se la posizione di una lettera è compresa fra i limiti destro e sinistro della lettera sopra
     vertMatrix = []
-    for el in lists:
+    for el in charactersList:
         found = False
-        for matrixIndex in range(len(vertMatrix)):
-            lastIndex = len(vertMatrix[matrixIndex]) - 1
-            if isSameColumn(el, vertMatrix[matrixIndex][lastIndex]) and not found:
-                vertMatrix[matrixIndex].append(el)
+        for columnIndex in range(len(vertMatrix)):
+            # se riesco a piazzare una lettera solla alla lettera di una colonna già iniziata ce la piazzo
+            if doesBelongToColumn(el, vertMatrix, columnIndex) and not found:
+                vertMatrix[columnIndex].append(el)
                 found = True
 
+        # se non sono riuscito a piazzare la lettera in nessuna colonna esistente ne creo una nuova
         if not found:
             vertMatrix.append([el])
 
-    maxLen = max([len(col) for col in vertMatrix])
-    vertMatrix = list(filter(lambda col: maxLen * 0.5 < len(col), vertMatrix))
+    # alla fine filtro sull'altezza' delle colonne per rimuovere gli outliers
+    maxColumnLen = max([len(col) for col in vertMatrix])
+    vertMatrix = list(filter(lambda col: maxColumnLen * 0.5 < len(col), vertMatrix))
 
     return vertMatrix
 
-def getMatrixMeanMinMeanMax(matrix, index):
-    values = [ statistics.mean([ el.pos[index] for el in array]) for array in matrix]
+
+'''Questa funzione serve a trovare gli estremi destro e sinistro, o alto e basso, dei caratteri di un puzzle.
+Per decidere se la funzione lavorerà sulle righe o sulle colonne riceve in input un indice'''
+def getMatrixMeanMinMeanMax(matrix, shapeIndex):
+    # questo array values contiene o le coordinate delle righe o le coordinate delle colonne
+    values = [ statistics.mean([ el.pos[shapeIndex] for el in array]) for array in matrix]
     values = sorted(values)
 
     return int(min(values)), int(max(values))
 
-def OCRPrecomputation(img):
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
-    #img_thresh = frameLib.preprocessingOCRImage(img)
 
-    config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
-    d = pytesseract.image_to_string(img_thresh, config=config)
-
-    #serve giusto da check aggiuntivo qualche riga più sotto
-    horizWords = wordsList(d)
-    rowsNumber = len(horizWords)
-
-    # FILTER
-    lists = getCharactersLists(img_thresh)
-    lists_filtered = filterBySize(lists)
-
-    newImg = img_thresh.copy()
-    for el in lists_filtered:
-        cv2.rectangle(newImg, (el.left, el.top), (el.right, el.bottom), (0, 0, 255), 3)
-        #cv2.putText(newImg, el.char, (el.pos[0], el.pos[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255))
+'''Questa funzione serve ad estrapolare dei parametri utili al riconoscimento dei caratteri del puzzle.
+Non esegue ancora il riconoscimento vero e proprio, però lo sfrutta a suo modo per ottenere le informazioni che le servono.
+Alla fine restituisce un oggetto di tipo PreOCRParameters che contiene dati sul puzzle che servono ad effettuare poi il riconoscimento vero e proprio.'''
+def OCRPrecomputation(img_BGR):
+    # 1 THRESHOLD
+    img_BGR = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
+    img_thresh = cv2.adaptiveThreshold(img_BGR, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
 
 
-    # MATRIXES
-    horizMatrix = getHorizontalMatrix(lists_filtered)
-    # se fallisce già questo è perchè il puzzle è proprio una porcheria ed è meglio se mi fermo
-    if len(horizMatrix) != rowsNumber:
+    # 2 GET CHARACTERS LIST
+    # ottengo una lista di CharacterWrapper, con solo caratteri di dimensione media simile fra loro.
+    # L'obiettivo è identificare solo i caratteri che sono stati riconosciuti con certezza, escludendo via via quelli incerti.
+    charactersList = getCharactersLists(img_thresh)
+    charactersList_Filtered = filterBySize(charactersList)
+
+
+    # 3 CHARACTERS MATRIXES
+    horizontalMatrix = getHorizontalMatrix(charactersList_Filtered)
+    # questo è un controllo in più che faccio per essere sicuro sul numero di righe
+    if len(horizontalMatrix) != getRowsNumber(img_thresh):
         raise Exception()
 
-    vertMatrix = getVerticalMatrix(lists_filtered)
+    verticalMatrix = getVerticalMatrix(charactersList_Filtered)
 
 
-    # FINAL PARAMETERS
-    rows = len(horizMatrix)
-    columns = len(vertMatrix)
+    # 4 PUZZLE PARAMETERS
+    rows = len(horizontalMatrix)
+    columns = len(verticalMatrix)
 
-    top, bottom = getMatrixMeanMinMeanMax(horizMatrix, 1)
-    left, right = getMatrixMeanMinMeanMax(vertMatrix, 0)
+    top, bottom = getMatrixMeanMinMeanMax(horizontalMatrix, 1)
+    left, right = getMatrixMeanMinMeanMax(verticalMatrix, 0)
 
-    result = PreOCRParameters(rows, columns, left, top, right, bottom)
-
-    return result
+    return PreOCRParameters(rows, columns, left, top, right, bottom)
 
 
 
