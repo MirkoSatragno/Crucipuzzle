@@ -217,6 +217,8 @@ def OCRPrecomputation(img_BGR):
 
 
     # 3 CHARACTERS MATRIXES
+    # trasformo la lista di caratteri in 2 matrici di caratteri: una lista di righe ed una lista di colonne
+    # Di nuovo, non ci sono tutti i caratteri, ma solo quelli che ho filtrato prima
     horizontalMatrix = getHorizontalMatrix(charactersList_Filtered)
     # questo è un controllo in più che faccio per essere sicuro sul numero di righe
     if len(horizontalMatrix) != getRowsNumber(img_thresh):
@@ -235,97 +237,104 @@ def OCRPrecomputation(img_BGR):
     return PreOCRParameters(rows, columns, left, top, right, bottom)
 
 
-
-
-def OCRComputation(img, preParameters):
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    #img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
-    #img_thresh = frameLib.preprocessingOCRImage(img)
-
+'''Questa funzione riceve in input l'immagine in scala di grigi di un singolo carattere e deve riconoscerlo. L'output è il carattere riconosciuto'''
+def recognizeCharacter(img_char):
     config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
 
+    # serve giusto ad avere una size di dimensione dispari
+    thresholdBoxSize = int(img_char.shape[0] / 2) * 2 + 1
+    # questo valore serve a "filtrare" il risultato del thresholding (circa. Vedi documentazione di opencv per la descrizione seria)
+    offsetValue = 2
+
+    # faccio un po' di tentativi di riconoscimento adattivo cambiando parametri. Se dopo un po' di tentativi non riconosco nulla mi arrendo
+    while offsetValue < 10:
+
+        img_thresh = cv2.adaptiveThreshold(img_char, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, thresholdBoxSize, offsetValue * 10)
+        d = pytesseract.image_to_string(img_thresh, config = config)
+
+        if d != "\f":
+            characters = d.split("\n")[0]
+            if len(characters) == 1:
+                return characters[0]
+            if 1 < len(characters):
+                offsetValue = offsetValue + 1
+                continue
+
+
+        '''se fallisco nel trovare un carattere generico mi concentro sulla "I", 
+        perchè è quella più difficile da riconoscere con pytesseract, ma la più facile da riconoscere "a mano"'''
+        # inverto bianco/nero perchè pytesseract lavora col nero, opencv col bianco
+        img_thresh[:] = 255 - img_thresh
+
+        contoursList, _ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contoursList:
+
+            area = cv2.contourArea(contour)
+            if 0 < area:
+
+                perimeter = cv2.arcLength(contour, True)
+                vertexes = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
+                # vogliamo solo quadrilateri, o simili
+                if len(vertexes) == 4 or len(vertexes) == 5:
+                    return "I"
+
+
+        # se ho fallito nel riconoscere anche la "I" ci riprovo con un nuovo thresholding
+        offsetValue = offsetValue + 1
+        '''print(offsetIndex)
+        print(recognizedChar)
+        plot.imshow(img_thresh, "gray")
+        plot.show()'''
+
+
+    # se arrivo alla fine senza aver riconosciuto nessun carattere lancio un'eccezione
+    raise Exception
+
+
+'''Questa è la vera e propria funzione che si occupa di riconoscere i caratteri del puzzle.
+Riceve in input l'immagine ed un oggetto che contiene dei parametri estrapolati grazie alla funzione di OCRPrecomputation.
+Il risultato è una matrice di caratteri'''
+def OCRComputation(img_BGR, preParameters):
+
+    '''La funzione opera il riconoscimento di caratteri lavorando su di loro singolarmente.
+    Ogni immagine di carattere viene ritagliata e poi con pytesseract si prova a riconoscere il contenuto.
+    Riusciamo a ritagliare con buona precisione i singoli caratteri grazie al risultato del preprocessing'''
+    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
+
+    # preparo i parametri base per ritagliare una a una le immagini delle singole lettere da riconoscere
     left0 = preParameters.left - int(preParameters.meanWidth / 2)
-    if (left0 < 0):
-        left0 = 0
     right0 = preParameters.left + int(preParameters.meanWidth / 2)
     top0 = preParameters.top - int(preParameters.meanHeight / 2)
-    if top0 < 0:
-        top0 = 0
     bottom0 = preParameters.top + int(preParameters.meanHeight / 2)
 
     matrix = []
 
-    for index1 in range(preParameters.rows):
+    # con un doppio ciclo riempo la matrice coi caratteri riconosciuti uno a uno
+    for rowIndex in range(preParameters.rows):
         matrix.append([])
 
-        top1 = top0 + int(preParameters.meanHeight * index1)
-        bottom1 = bottom0 + int(preParameters.meanHeight * index1)
-        if img.shape[0] < bottom1:
-            bottom1 = img.shape[0]
+        # non faccio una somma incrementale ma me lo moltiplico ogni volta per evitare errori di approssimazione castando a int
+        top1 = top0 + int(preParameters.meanHeight * rowIndex)
+        if top1 < 0:
+            top1 = 0
+        bottom1 = bottom0 + int(preParameters.meanHeight * rowIndex)
+        if img_BW.shape[0] < bottom1:
+            bottom1 = img_BW.shape[0]
 
-        for index2 in range(preParameters.columns):
-            left1 = left0 + int(preParameters.meanWidth * index2)
-            right1 = right0 + int(preParameters.meanWidth * index2)
-            if (img.shape[1] < right1):
-                right1 = img.shape[1]
+        for columnIndex in range(preParameters.columns):
+            left1 = left0 + int(preParameters.meanWidth * columnIndex)
+            if left1 < 0:
+                left1 = 0
+            right1 = right0 + int(preParameters.meanWidth * columnIndex)
+            if img_BW.shape[1] < right1:
+                right1 = img_BW.shape[1]
 
-            img_crop = img[top1: bottom1, left1: right1]
-
-            recognizedChar = False
-            boxSize = int(img_crop.shape[0]/2)*2 + 1
-            offsetIndex = 2
-            while (not recognizedChar and offsetIndex < 10):
-
-                img_thresh = cv2.adaptiveThreshold(img_crop, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, boxSize, offsetIndex * 10)
-                d = pytesseract.image_to_string(img_thresh, config=config)
-
-                d = d[0]
-                if d != "\f":
-                    recognizedChar = True
-                else:
-                    img_threshInv = img_thresh.copy()
-                    img_threshInv[:] = 255 - img_threshInv
-
-                    contoursList, hierarchy = cv2.findContours(img_threshInv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-                    # questi servono a trovare il rettangolo più grande, nel malaugurato caso ce ne sia più di uno
-                    maxContour = []
-                    maxArea = 0
-
-                    for contour in contoursList:
-                        area = cv2.contourArea(contour)
-
-                        # vogliamo che il rettangolo sia abbastanza grande, e sia il più grande dell'immagine
-                        if area > maxArea:
-                            perimeter = cv2.arcLength(contour, True)
-                            vertexes = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
-                            # vogliamo solo quadrilateri
-                            if len(vertexes) == 4 or len(vertexes) == 5:
-                                maxContour = contour.copy()
-                                maxArea = area
-
-                    if len(maxContour) != 0:
-                        d = "I"
-                        recognizedChar = True
-                    else:
-                        offsetIndex = offsetIndex + 1
-                        '''print(offsetIndex)
-                        print(recognizedChar)
-                        plot.imshow(img_thresh, "gray")
-                        plot.show()'''
-
-            if not recognizedChar:
-                d = "_"
+            img_crop = img_BW[top1: bottom1, left1: right1]
+            char = recognizeCharacter(img_crop)
+            matrix[rowIndex].append(char)
 
 
-            matrix[index1].append( d )
-
-
-
-    for row in matrix:
-        print(row)
-
-    plot.imshow(img, "gray")
-    plot.show()
+    return matrix
 
 
 import glob
@@ -333,8 +342,13 @@ import glob
 paths = glob.glob("../../Sample pictures/*")
 for path in paths:
     print("******" + path + "*********")
-    img = cv2.imread(path)
-    imgWrapper = frameLib.processImage(img)
+    img_BGR = cv2.imread(path)
+    imgWrapper = frameLib.processImage(img_BGR)
 
     resultParameters = OCRPrecomputation(imgWrapper.img_cropped)
-    OCRComputation(imgWrapper.img_cropped, resultParameters)
+    charactersMatrix = OCRComputation(imgWrapper.img_cropped, resultParameters)
+    for row in charactersMatrix:
+        print(row)
+
+    plot.imshow(imgWrapper.img_cropped)
+    plot.show()
