@@ -5,6 +5,10 @@ import matplotlib.pyplot as plot
 
 from Libraries import frameLibrary as frameLib
 
+# Mention the installed location of Tesseract-OCR in your system
+pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
+
+
 class CharacterWrapper:
     def __init__(self, char, left, top, right, bottom):
         self.char = char
