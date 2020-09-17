@@ -43,22 +43,21 @@ def removeSteadyImage(thread):
     thread.stop()
     thread.join()
 
-'''img è l'immagine dove devo disefnare
+'''img è l'immagine dove devo disegnare
 matrixBW è la matrice in scala d grigi
 line sono gli estremi della parola trovata nella matrice grigia
 HSX e LDX sono le coordinate delle lettere estreme nell'immagine'''
-def drawLine(img, matrixBW, line, HSX, LDX):
-    height = LDX[1] - HSX[1]
-    width = LDX[0] - HSX[0]
-    heightOffset = HSX[1]
-    widthOffset = HSX[0]
-    deltaHeight = height / (matrixBW.shape[0] - 1)
-    deltaWidth = width / (matrixBW.shape[1] - 1)
+def drawLine(img, matrixBW, line, preParameters):
+    heightOffset = preParameters.top #HSX[1]
+    widthOffset = preParameters.left #HSX[0]
+    deltaHeight = preParameters.meanHeight
+    deltaWidth = preParameters.meanWidth
 
     point1 = (int(widthOffset + deltaWidth * line[0][0]), int(heightOffset + deltaHeight * line[0][1]))
     point2 = (int(widthOffset + deltaWidth * line[1][0]), int(heightOffset + deltaHeight * line[1][1]))
 
-    lineThickness = int(np.sqrt(height * width / (matrixBW.shape[0] * matrixBW.shape[1])) / 8)
+    #lineThickness = int(np.sqrt(height * width / (matrixBW.shape[0] * matrixBW.shape[1])) / 8)
+    lineThickness = int(min(deltaHeight, deltaWidth) / 8)
 
     cv2.line(img,  point1, point2, (0, 255, 255), lineThickness)
 

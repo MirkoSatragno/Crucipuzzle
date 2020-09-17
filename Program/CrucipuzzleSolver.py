@@ -1,13 +1,14 @@
 import cv2
 import numpy as np
+import time
 # per il file dialog
 import tkinter as tk
 from tkinter import filedialog
-import time
 
 from Libraries import plotLibrary as plotLib
 from Libraries import frameLibrary as frameLib
 from Libraries import wordLibrary as wordLib
+from Libraries import ocr2Library as ocrLib
 
 
 def getBGRPicture():
@@ -15,8 +16,6 @@ def getBGRPicture():
     img_BGR = cv2.imread(file_path)
     if img_BGR is None:
         raise FileNotFoundError()
-
-    # img_RGB = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2RGB)
 
     return img_BGR
 
@@ -58,20 +57,26 @@ def solvePuzzle(inputMethod):
             time.sleep(2)
             return 0
 
+    print("\nProcessing image...")
+    lettersDictionary = wordLib.getLettersDictionary()
     try:
         processedImgWrapper = frameLib.processImage(img_BGR)
-    except ValueError:
+        preprocessedParameters = ocrLib.OCRPrecomputation(processedImgWrapper.img_cropped)
+        charactersMatrix = ocrLib.OCRComputation(processedImgWrapper.img_cropped, preprocessedParameters)
+        grayMatrix = wordLib.matrixToGrayscale(lettersDictionary, charactersMatrix)
+        for row in charactersMatrix:
+            print(row)
+    except Exception:
         print("Bad picture. Puzzle not found")
-        time.sleep(2)
+        time.sleep(1)
         return 0
 
-    lettersDictionary = wordLib.getLettersDictionary()
-    # TODO: get greyscale matrix
+
 
     # serve se lo user vuole pulire l'immagine
     originalImg_cropped = processedImgWrapper.img_cropped.copy()
     steadyImage = plotLib.plotSteadyImage(img_BGR)
-    print("\nPicture has been acquired correctly. Now you can start typing words.")
+    print("\nPicture has been acquired correctly. Now you can start searching words.")
     print("If you want to clean the picture press \"C\".\nWhen you're done, press \"Q\" to quit.\n")
 
     word = ""
@@ -79,18 +84,12 @@ def solvePuzzle(inputMethod):
         word = str(input("Type a word to search for: "))
 
         if wordLib.isWordValid(word):
-            # TODO: cercare la parola
-            # line = wordLib.findWord( img_BGR , word, lettersDictionary)
-
-            # qui faccio finta di avere una matrice nell'attesa di ricevere quella vera
-            word = "dog"
-            img_BW = np.array([[50, 70, 120, 30, 240, 150],
-                               [20, 70, 250, 80, 90, 100],
-                               [30, 140, 50, 130, 70, 150],
-                               [30, 140, 60, 100, 160, 50],
-                               [210, 60, 40, 200, 250, 20]])
-
-            plotLib.drawLine(processedImgWrapper.img_cropped, img_BW, [(1, 0), (5, 4)], (50, 50), (600, 550))
+            try:
+                line = wordLib.findWord(grayMatrix , word, lettersDictionary)
+            except FileNotFoundError:
+                print("Word not found")
+                continue
+            plotLib.drawLine(processedImgWrapper.img_cropped, grayMatrix, line, preprocessedParameters)
 
             img_lines = frameLib.getFinalImage(img_BGR, processedImgWrapper.img_cropped, processedImgWrapper)
             plotLib.changeSteadyImage(steadyImage, img_lines)

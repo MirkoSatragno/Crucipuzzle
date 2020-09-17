@@ -9,17 +9,9 @@ from Libraries import frameLibrary as frameLib
 pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
 
 
-class CharacterWrapper:
-    def __init__(self, char, left, top, right, bottom):
-        self.char = char
-        self.left = left
-        self.top = top
-        self.right = right
-        self.bottom = bottom
 
-        self.width = right - left
-        self.height = top - bottom
-        self.pos = [int((right + left)/2), int((bottom + top)/2)]
+################################## PUBLIC METHODS ###############################################
+
 
 class PreOCRParameters:
     def __init__(self, rows, columns, left, top, right, bottom):
@@ -33,6 +25,102 @@ class PreOCRParameters:
         # non li casto a int o poi mi trascino dietro errori di approssimazione che crescono linearmente
         self.meanWidth = (right - left)/(columns - 1)
         self.meanHeight = (bottom - top)/(rows - 1)
+
+
+
+'''Questa funzione serve ad estrapolare dei parametri utili al riconoscimento dei caratteri del puzzle.
+Non esegue ancora il riconoscimento vero e proprio, però lo sfrutta a suo modo per ottenere le informazioni che le servono.
+Alla fine restituisce un oggetto di tipo PreOCRParameters che contiene dati sul puzzle che servono ad effettuare poi il riconoscimento vero e proprio.'''
+def OCRPrecomputation(img_BGR):
+    # 1 THRESHOLD
+    img_BGR = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
+    img_thresh = cv2.adaptiveThreshold(img_BGR, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
+
+
+    # 2 GET CHARACTERS LIST
+    # ottengo una lista di CharacterWrapper, con solo caratteri di dimensione media simile fra loro.
+    # L'obiettivo è identificare solo i caratteri che sono stati riconosciuti con certezza, escludendo via via quelli incerti.
+    charactersList = getCharactersLists(img_thresh)
+    charactersList_Filtered = filterBySize(charactersList)
+
+
+    # 3 CHARACTERS MATRIXES
+    # trasformo la lista di caratteri in 2 matrici di caratteri: una lista di righe ed una lista di colonne
+    # Di nuovo, non ci sono tutti i caratteri, ma solo quelli che ho filtrato prima
+    horizontalMatrix = getHorizontalMatrix(charactersList_Filtered)
+    # questo è un controllo in più che faccio per essere sicuro sul numero di righe
+    if len(horizontalMatrix) != getRowsNumber(img_thresh):
+        raise Exception()
+
+    verticalMatrix = getVerticalMatrix(charactersList_Filtered)
+
+
+    # 4 PUZZLE PARAMETERS
+    rows = len(horizontalMatrix)
+    columns = len(verticalMatrix)
+
+    top, bottom = getMatrixMeanMinMeanMax(horizontalMatrix, 1)
+    left, right = getMatrixMeanMinMeanMax(verticalMatrix, 0)
+
+    return PreOCRParameters(rows, columns, left, top, right, bottom)
+
+
+
+'''Questa è la vera e propria funzione che si occupa di riconoscere i caratteri del puzzle.
+Riceve in input l'immagine ed un oggetto che contiene dei parametri estrapolati grazie alla funzione di OCRPrecomputation.
+Il risultato è una matrice di caratteri'''
+def OCRComputation(img_BGR, preParameters):
+
+    '''La funzione opera il riconoscimento di caratteri lavorando su di loro singolarmente.
+    Ogni immagine di carattere viene ritagliata e poi con pytesseract si prova a riconoscere il contenuto.
+    Riusciamo a ritagliare con buona precisione i singoli caratteri grazie al risultato del preprocessing'''
+    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
+
+    # preparo i parametri base per ritagliare una a una le immagini delle singole lettere da riconoscere
+    left0 = preParameters.left - int(preParameters.meanWidth / 2)
+    right0 = preParameters.left + int(preParameters.meanWidth / 2)
+    top0 = preParameters.top - int(preParameters.meanHeight / 2)
+    bottom0 = preParameters.top + int(preParameters.meanHeight / 2)
+
+    matrix = []
+
+    # con un doppio ciclo riempo la matrice coi caratteri riconosciuti uno a uno
+    for rowIndex in range(preParameters.rows):
+        matrix.append([])
+
+        # non faccio una somma incrementale ma me lo moltiplico ogni volta per evitare errori di approssimazione castando a int
+        top1 = max(top0 + int(preParameters.meanHeight * rowIndex), 0)
+        bottom1 = min(bottom0 + int(preParameters.meanHeight * rowIndex), img_BW.shape[0])
+
+        for columnIndex in range(preParameters.columns):
+            left1 = max(left0 + int(preParameters.meanWidth * columnIndex), 0)
+            right1 = min(right0 + int(preParameters.meanWidth * columnIndex), img_BW.shape[1])
+
+            img_crop = img_BW[top1: bottom1, left1: right1]
+            char = recognizeCharacter(img_crop)
+            matrix[rowIndex].append(char)
+
+
+    return matrix
+
+
+
+
+
+################################## PRIVATE METHODS ###############################################
+# in realtà non sono privati. E' una distinzione estetica
+
+class CharacterWrapper:
+    def __init__(self, char, left, top, right, bottom):
+        self.char = char
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
+
+        self.width = right - left
+        self.height = top - bottom
+        self.pos = [int((right + left)/2), int((bottom + top)/2)]
 
 
 '''E' un metodo abbastanza preciso per trovare il numero di righe di un puzzle.
@@ -200,42 +288,6 @@ def getMatrixMeanMinMeanMax(matrix, shapeIndex):
     return int(min(values)), int(max(values))
 
 
-'''Questa funzione serve ad estrapolare dei parametri utili al riconoscimento dei caratteri del puzzle.
-Non esegue ancora il riconoscimento vero e proprio, però lo sfrutta a suo modo per ottenere le informazioni che le servono.
-Alla fine restituisce un oggetto di tipo PreOCRParameters che contiene dati sul puzzle che servono ad effettuare poi il riconoscimento vero e proprio.'''
-def OCRPrecomputation(img_BGR):
-    # 1 THRESHOLD
-    img_BGR = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
-    img_thresh = cv2.adaptiveThreshold(img_BGR, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
-
-
-    # 2 GET CHARACTERS LIST
-    # ottengo una lista di CharacterWrapper, con solo caratteri di dimensione media simile fra loro.
-    # L'obiettivo è identificare solo i caratteri che sono stati riconosciuti con certezza, escludendo via via quelli incerti.
-    charactersList = getCharactersLists(img_thresh)
-    charactersList_Filtered = filterBySize(charactersList)
-
-
-    # 3 CHARACTERS MATRIXES
-    # trasformo la lista di caratteri in 2 matrici di caratteri: una lista di righe ed una lista di colonne
-    # Di nuovo, non ci sono tutti i caratteri, ma solo quelli che ho filtrato prima
-    horizontalMatrix = getHorizontalMatrix(charactersList_Filtered)
-    # questo è un controllo in più che faccio per essere sicuro sul numero di righe
-    if len(horizontalMatrix) != getRowsNumber(img_thresh):
-        raise Exception()
-
-    verticalMatrix = getVerticalMatrix(charactersList_Filtered)
-
-
-    # 4 PUZZLE PARAMETERS
-    rows = len(horizontalMatrix)
-    columns = len(verticalMatrix)
-
-    top, bottom = getMatrixMeanMinMeanMax(horizontalMatrix, 1)
-    left, right = getMatrixMeanMinMeanMax(verticalMatrix, 0)
-
-    return PreOCRParameters(rows, columns, left, top, right, bottom)
-
 
 '''Questa funzione riceve in input l'immagine in scala di grigi di un singolo carattere e deve riconoscerlo. L'output è il carattere riconosciuto'''
 def recognizeCharacter(img_char):
@@ -253,6 +305,7 @@ def recognizeCharacter(img_char):
         d = pytesseract.image_to_string(img_thresh, config = config)
 
         if d != "\f":
+            # controllo di non aver riconosciuto più di un carattere. Nel qual caso continuo col while finchè non ne riconosco esattamente solo 1
             characters = d.split("\n")[0]
             if len(characters) == 1:
                 return characters[0]
@@ -268,10 +321,8 @@ def recognizeCharacter(img_char):
 
         contoursList, _ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         for contour in contoursList:
-
             area = cv2.contourArea(contour)
             if 0 < area:
-
                 perimeter = cv2.arcLength(contour, True)
                 vertexes = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
                 # vogliamo solo quadrilateri, o simili
@@ -291,50 +342,7 @@ def recognizeCharacter(img_char):
     raise Exception
 
 
-'''Questa è la vera e propria funzione che si occupa di riconoscere i caratteri del puzzle.
-Riceve in input l'immagine ed un oggetto che contiene dei parametri estrapolati grazie alla funzione di OCRPrecomputation.
-Il risultato è una matrice di caratteri'''
-def OCRComputation(img_BGR, preParameters):
 
-    '''La funzione opera il riconoscimento di caratteri lavorando su di loro singolarmente.
-    Ogni immagine di carattere viene ritagliata e poi con pytesseract si prova a riconoscere il contenuto.
-    Riusciamo a ritagliare con buona precisione i singoli caratteri grazie al risultato del preprocessing'''
-    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
-
-    # preparo i parametri base per ritagliare una a una le immagini delle singole lettere da riconoscere
-    left0 = preParameters.left - int(preParameters.meanWidth / 2)
-    right0 = preParameters.left + int(preParameters.meanWidth / 2)
-    top0 = preParameters.top - int(preParameters.meanHeight / 2)
-    bottom0 = preParameters.top + int(preParameters.meanHeight / 2)
-
-    matrix = []
-
-    # con un doppio ciclo riempo la matrice coi caratteri riconosciuti uno a uno
-    for rowIndex in range(preParameters.rows):
-        matrix.append([])
-
-        # non faccio una somma incrementale ma me lo moltiplico ogni volta per evitare errori di approssimazione castando a int
-        top1 = top0 + int(preParameters.meanHeight * rowIndex)
-        if top1 < 0:
-            top1 = 0
-        bottom1 = bottom0 + int(preParameters.meanHeight * rowIndex)
-        if img_BW.shape[0] < bottom1:
-            bottom1 = img_BW.shape[0]
-
-        for columnIndex in range(preParameters.columns):
-            left1 = left0 + int(preParameters.meanWidth * columnIndex)
-            if left1 < 0:
-                left1 = 0
-            right1 = right0 + int(preParameters.meanWidth * columnIndex)
-            if img_BW.shape[1] < right1:
-                right1 = img_BW.shape[1]
-
-            img_crop = img_BW[top1: bottom1, left1: right1]
-            char = recognizeCharacter(img_crop)
-            matrix[rowIndex].append(char)
-
-
-    return matrix
 
 
 import glob
