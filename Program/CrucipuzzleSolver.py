@@ -33,7 +33,7 @@ def getBGRCameraPicture():
         ret, frame = capture.read()
         cv2.imshow(captureWindowName, frame)
 
-        if cv2.waitKey(50) & 0xFF == ord('p'):
+        if cv2.waitKey(33) & 0xFF == ord('p'):  # Uso 33 come input delay per avere idealmente 30 fps
             break
 
     capture.release()
