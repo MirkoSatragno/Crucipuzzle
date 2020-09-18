@@ -89,7 +89,7 @@ def solvePuzzle(inputMethod):
             except FileNotFoundError:
                 print("Word not found")
                 continue
-            plotLib.drawLine(processedImgWrapper.img_cropped, grayMatrix, line, preprocessedParameters)
+            plotLib.drawLine(processedImgWrapper.img_cropped, line, preprocessedParameters)
 
             img_lines = frameLib.getFinalImage(img_BGR, processedImgWrapper.img_cropped, processedImgWrapper)
             plotLib.changeSteadyImage(steadyImage, img_lines)

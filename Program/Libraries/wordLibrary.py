@@ -50,29 +50,19 @@ def findWord(img_BW, word, lettersDictionary):
     # 2 MATCH
     # inizio coi primi 6 templates
     for index in range(0, 6):
-        template = templates[index].astype(np.uint8)
-        mask = masks[index].astype(np.uint8)
+        found, position = matchMaskedTemplate(templates, masks, index, img_BW)
+        if found:
+            pointA = position
+            pointB = (position[0] + templates[index].shape[1] - 1, position[1] + templates[index].shape[0] - 1)
 
-        matchResult = cv2.matchTemplate(img_BW, template, cv2.TM_SQDIFF, mask = mask)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(matchResult)
-        print(min_val)
-        if min_val <= 0:
-            pointA = min_loc
-            pointB = (pointA[0] + template.shape[1] - 1, pointA[1] + template.shape[0] - 1)
-
-            return pointA, pointB
+            return [pointA, pointB]
 
     # le due antidiagonali danno qualche problemino per identificare pointA e pointB, allora le faccio a parte
     for index in range (6, 8):
-        template = templates[index].astype(np.uint8)
-        mask = masks[index].astype(np.uint8)
-
-        matchResult = cv2.matchTemplate(img_BW, template, cv2.TM_SQDIFF, mask=mask)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(matchResult)
-        print(min_val)
-        if min_val <= 0:
-            pointA = (min_loc[0], min_loc[1] + template.shape[0] - 1)
-            pointB = (min_loc[0] + template.shape[1] - 1, min_loc[1])
+        found, position = matchMaskedTemplate(templates, masks, index, img_BW)
+        if found:
+            pointA = (position[0], position[1] + templates[index].shape[0] - 1)
+            pointB = (position[0] + templates[index].shape[1] - 1, position[1])
 
             return [pointA, pointB]
 
@@ -126,4 +116,16 @@ def getTemplatesAndMasks(word, lettersDictionary):
     return templates, masks
 
 
+def matchMaskedTemplate(templates, masks, index, img):
+    template = templates[index].astype(np.uint8)
+    mask = masks[index].astype(np.uint8)
+    if img.shape[0] < mask.shape[0] or img.shape[1] < mask.shape[1]:
+        return False, (0, 0)
 
+    matchResult = cv2.matchTemplate(img, template, cv2.TM_SQDIFF, mask = mask)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(matchResult)
+    print(min_val)
+    if min_val <= 1e-6:
+        return True, min_loc
+
+    return False, (0, 0)

@@ -47,7 +47,7 @@ def removeSteadyImage(thread):
 matrixBW è la matrice in scala d grigi
 line sono gli estremi della parola trovata nella matrice grigia
 HSX e LDX sono le coordinate delle lettere estreme nell'immagine'''
-def drawLine(img, matrixBW, line, preParameters):
+def drawLine(img, line, preParameters):
     heightOffset = preParameters.top #HSX[1]
     widthOffset = preParameters.left #HSX[0]
     deltaHeight = preParameters.meanHeight

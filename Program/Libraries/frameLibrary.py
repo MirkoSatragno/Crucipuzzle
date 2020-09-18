@@ -53,9 +53,9 @@ def preprocessingOCRImage(img):
     #img = cv2.GaussianBlur(img, (3, 3), 0)
 
     # 2 ADAPTIVE THRESHOLDING
-    oddBlockSize = int(linearImageLength * 20/ 800) * 2 + 3
-    bohSize = int(linearImageLength * 70/10000) * 2 + 3
-    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C , cv2.THRESH_BINARY_INV, oddBlockSize, bohSize)
+    boxSize = int(linearImageLength * 22/ 800) * 2 + 3
+    offsetValue = int(linearImageLength * 70/10000) * 2 + 3
+    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C , cv2.THRESH_BINARY_INV, boxSize, offsetValue)
 
     # 3 CLOSURE
     closeKernelSize2 = int(linearImageLength / 1500) * 2 + 1
@@ -99,33 +99,27 @@ def getFrameVertexes(img_BW):
 
     contoursList, hierarchy = cv2.findContours(img_openClosed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     # questi servono a trovare il rettangolo più grande, nel malaugurato caso ce ne sia più di uno
-    maxContour = []
-    maxArea = 0
+    fourVertexes = []
+    thresholdArea = minimumArea
 
     for contour in contoursList:
         area = cv2.contourArea(contour)
         # vogliamo che il rettangolo sia abbastanza grande, e sia il più grande dell'immagine
-        if area > minimumArea and area > maxArea:
+        if thresholdArea < area:
             perimeter = cv2.arcLength(contour, True)
-            vertexes = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+            vertexes = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
             # vogliamo solo quadrilateri
             if len(vertexes) == 4:
-                maxContour = contour.copy()
-                maxArea = area
+                fourVertexes = vertexes
+                thresholdArea = area
 
-    if len(maxContour) == 0:
+    if len(fourVertexes) != 4:
         raise ValueError()
 
-    # 5 VERTEXES
-    # qui identifico i 4 vertici del quadrilatero
-    perimeter = cv2.arcLength(maxContour, True)
-    vertexes = cv2.approxPolyDP(maxContour, 0.02 * perimeter, True)
-
-    # 6 SORT VERTEXES
-    # forse sono già in ordine, ma la documentazione non lo dice
-    # nel dubbio li ordino a modo mio
+    # 5 SORT VERTEXES
+    # li ordino a modo mio, in modo che seguano un ordine circolare
     sortedVertexes = []
-    sortVertexes(vertexes, sortedVertexes)
+    sortVertexes(fourVertexes, sortedVertexes)
 
     return sortedVertexes
 

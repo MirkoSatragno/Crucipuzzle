@@ -48,15 +48,11 @@ def OCRPrecomputation(img_BGR):
     # trasformo la lista di caratteri in 2 matrici di caratteri: una lista di righe ed una lista di colonne
     # Di nuovo, non ci sono tutti i caratteri, ma solo quelli che ho filtrato prima
     horizontalMatrix = getHorizontalMatrix(charactersList_Filtered)
-    # questo è un controllo in più che faccio per essere sicuro sul numero di righe
-    if len(horizontalMatrix) != getRowsNumber(img_thresh):
-        raise Exception()
-
     verticalMatrix = getVerticalMatrix(charactersList_Filtered)
 
 
     # 4 PUZZLE PARAMETERS
-    rows = len(horizontalMatrix)
+    rows = getRowsNumber(img_thresh)
     columns = len(verticalMatrix)
 
     top, bottom = getMatrixMeanMinMeanMax(horizontalMatrix, 1)
@@ -332,13 +328,10 @@ def recognizeCharacter(img_char):
 
         # se ho fallito nel riconoscere anche la "I" ci riprovo con un nuovo thresholding
         offsetValue = offsetValue + 1
-        '''print(offsetIndex)
-        print(recognizedChar)
-        plot.imshow(img_thresh, "gray")
-        plot.show()'''
-
 
     # se arrivo alla fine senza aver riconosciuto nessun carattere lancio un'eccezione
+    plot.imshow(img_char, "gray")
+    plot.show()
     raise Exception
 
 
