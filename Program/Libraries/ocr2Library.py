@@ -330,26 +330,5 @@ def recognizeCharacter(img_char):
         offsetValue = offsetValue + 1
 
     # se arrivo alla fine senza aver riconosciuto nessun carattere lancio un'eccezione
-    plot.imshow(img_char, "gray")
-    plot.show()
     raise Exception
 
-
-
-
-
-import glob
-
-paths = glob.glob("../../Sample pictures/*")
-for path in paths:
-    print("******" + path + "*********")
-    img_BGR = cv2.imread(path)
-    imgWrapper = frameLib.processImage(img_BGR)
-
-    resultParameters = OCRPrecomputation(imgWrapper.img_cropped)
-    charactersMatrix = OCRComputation(imgWrapper.img_cropped, resultParameters)
-    for row in charactersMatrix:
-        print(row)
-
-    plot.imshow(imgWrapper.img_cropped)
-    plot.show()

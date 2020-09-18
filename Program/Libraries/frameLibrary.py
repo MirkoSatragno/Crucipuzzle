@@ -303,20 +303,3 @@ def getInverseWarpedImage(img_original, img_warped, newSortedVertexes, oldSorted
 
     return img_unwarped
 
-
-
-'''Questo torna ocmodo perchè la imshow della pyplot
-Serve a fare un resize proporzionale dell'immagine specificando anche solo una delle 2 nuove dimensioni (altezza o larghezza)'''
-'''def resizeProportional(image, newWidth = None, newHeight = None):
-    (h, w) = image.shape[:2]
-
-    if newWidth is None and newHeight is None:
-        return image
-    if newWidth is None:
-        r = newHeight / float(h)
-        dim = (int(w * r), newHeight)
-    else:
-        r = newWidth / float(w)
-        dim = (newWidth, int(h * r))
-
-    return cv2.resize(image, dim, interpolation=cv2.INTER_AREA)'''

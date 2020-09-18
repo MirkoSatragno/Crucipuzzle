@@ -124,7 +124,7 @@ def matchMaskedTemplate(templates, masks, index, img):
 
     matchResult = cv2.matchTemplate(img, template, cv2.TM_SQDIFF, mask = mask)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(matchResult)
-    print(min_val)
+
     if min_val <= 1e-6:
         return True, min_loc
 
