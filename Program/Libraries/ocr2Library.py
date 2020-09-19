@@ -6,9 +6,6 @@ import statistics
 pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
 
 
-
-################################## PUBLIC METHODS ###############################################
-
 '''In questo oggetto immagazzino le informazioni generali sull'immagine del puzzle, estrapolate tramite alla pre-elaborazione'''
 class PreOCRParameters:
     def __init__(self, rows, columns, left, top, right, bottom):
@@ -38,6 +35,8 @@ class CharacterWrapper:
         self.pos = [int((right + left)/2), int((bottom + top)/2)]
 
 
+################################## PUBLIC METHODS ###############################################
+
 '''Questa funzione serve ad estrapolare dei parametri utili al riconoscimento dei caratteri del puzzle.
 Non esegue ancora il riconoscimento vero e proprio, però lo sfrutta a suo modo per ottenere le informazioni che le servono.
 Alla fine restituisce un oggetto di tipo PreOCRParameters che contiene dati sul puzzle che servono ad effettuare poi il riconoscimento vero e proprio.'''
@@ -62,6 +61,7 @@ def OCRPrecomputation(img_BGR):
 
 
     # 4 PUZZLE PARAMETERS
+    # uso la getRowsNumber perchè ho visto che in media da risultati più accurati
     rows = getRowsNumber(img_thresh)
     columns = len(verticalMatrix)
 
@@ -112,7 +112,6 @@ def OCRComputation(img_BGR, preParameters):
 
 
 
-
 ################################## PRIVATE METHODS ###############################################
 # in realtà non sono privati. E' una distinzione estetica
 
@@ -129,7 +128,7 @@ def getRowsNumber(img_thresh):
     # filtro via tutte le righe troppo corte perchè verosimilmente sono outliers
     meanLength = statistics.mean([len(word) for word in word_strings])
     lengthThreshold = int(meanLength * 0.5)
-    word_strings = list(filter(lambda word: len(word) > lengthThreshold, word_strings))
+    word_strings = list(filter(lambda word: lengthThreshold < len(word), word_strings))
     rowsNumber = len(word_strings)
 
     return rowsNumber
@@ -207,7 +206,7 @@ def filterBySize(charactersList):
 
 
 
-'''Questa funzione serve a trasformare un lista di caratteri in una matrice di righe del puzzle'''
+'''Questa funzione serve a trasformare una lista di caratteri in una matrice di righe del puzzle'''
 def getHorizontalMatrix(charactersList):
 
     '''Per riordinarle mi baso sull'assunzione che le lettere sono già ordinate per righe quando vengono riconosciute.

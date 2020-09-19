@@ -80,7 +80,7 @@ def solvePuzzle(inputMethod):
     except Exception:
         print("Bad picture. Puzzle not found")
         time.sleep(1)
-        return 0
+        return
 
 
     # 3 WORD SEARCH
@@ -99,9 +99,11 @@ def solvePuzzle(inputMethod):
             except FileNotFoundError:
                 print("Word not found.")
                 continue
+            # ora che ho trovato la parola disegno una riga sull'immagine cropped
             plotLib.drawLine(processedImgWrapper.img_cropped, line, preprocessedParameters)
-
+            # partendo dall'immagine cropped ricostruisco l'immagine originale
             img_lines = frameLib.getFinalImage(img_BGR, processedImgWrapper.img_cropped, processedImgWrapper)
+
             plotLib.changeSteadyImage(steadyImage, img_lines)
         else:
             if word == "c":

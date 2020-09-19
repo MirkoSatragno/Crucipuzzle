@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-'''Questo mi contiene in maniera elegante i parametri che poi mi serviranno  per i procedimenti inversi di warp e crop'''
+'''Questo mi contiene in maniera più comoda i parametri che poi mi serviranno  per i procedimenti inversi di warp e crop'''
 class processedPicture:
     def __init__(self, img_warped, img_cropped, oldVertexes, newVertexes):
         self.img_warped = img_warped
@@ -17,16 +17,17 @@ def processImage(img_BGR):
     img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
 
     # 2 VERTEXES
-    # questa è la posizione dei 4 vertici del quadrilatero originale
+    # questa è la posizione dei 4 vertici del quadrilatero originale della cornice del puzzle
     sortedVertexes = getFrameVertexes(img_BW)
     # questa è la nuova posizione dei vertici che mi server per fare il wrap
     newSortedVertexes = getNewFrameVertexes(sortedVertexes)
 
     # 3 AFFINE IMAGE
-    # stiracchio l'immagine, per raddrizzare un po' il quadrilatero centrale
+    # stiracchio l'immagine per raddrizzare un po' il quadrilatero del puzzle
     img_warped = getWarpedImage(img_BGR, sortedVertexes, newSortedVertexes)
 
     # 4 CROP
+    # ritaglio solo la ROI che mi interessa
     img_cropped = cropImage(img_warped, newSortedVertexes)
 
     return processedPicture(img_warped, img_cropped, sortedVertexes, newSortedVertexes)
@@ -51,35 +52,33 @@ def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
 '''Questa funzione riceve in input l'immagine in bianco e nero (perchè sì)
 E restituisce in output un vettore dei 4 vertici della cornice del puzzle, ordinati'''
 def getFrameVertexes(img_BW):
+
+    '''Tutti i seguenti parametri sono stati scelti dopo aver fatto molti tentativi a mano.
+    Per velocizzare il processo ci siamo scritti un altro programmino in python che utilizza delle trackbar.'''
     # 1 BLUR
-    # non so se e quanto sia utile, ma gli youtuber più esperti di me lo usano e per ora mi fido
     img_blurred = cv2.GaussianBlur(img_BW, (7, 7), 0)
 
     # 2 ADAPTIVE THRESHOLD
-    # i valori sono stati decisi in maniera sperimentale sfruttando l'altro programma di AdaptiveThresholdTuning (al quale forse cambierò il nome, non lo so)
-    # alla fine molti valori sono stati trovati in maniera sperimentale con un altro programmino scritto da me
     img_thresh = cv2.adaptiveThreshold(img_blurred, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 81, 15)
 
     # 3 OPEN CLOSE
-    # dovrebbe migliorare un po' l'immagine, togliere un po' di rumore, tappare buchetti
+    # nota: questo processo potrebbe peggiorare la leggibilità delle lettere,
+    # ma non è un problema perchè qui stiamo solo cercando di riconoscere la cornice del puzzle
     kernelSize = 2
     openKernel = np.ones((kernelSize, kernelSize))
     img_open = cv2.morphologyEx(img_thresh, cv2.MORPH_OPEN, openKernel, iterations = 1)
-    # la chiusura potrebbe chiudere il buco di qualche "A" e altra roba, ma chissenefrega perchè ora stiamo cercando di trovare il rettangolo
     kernelSize = 3
     closeKernel = np.ones((kernelSize, kernelSize))
     img_openClosed = cv2.morphologyEx(img_open, cv2.MORPH_CLOSE, closeKernel, iterations = 2)
 
     # 4 CONTOURS
     # qui cerchiamo di approssimare la figura del quadrilatero per estrapolarne i vertici
-    # fisso una dimensione minima per l'area. Se non troviamo un quadrilatero grande almeno così allora la foto fa schifo
+    # fisso una dimensione minima per l'area del puzzle. Se non troviamo un quadrilatero abbastanza grande l'immagine è da scartare
     shorterSide = np.minimum(img_BW.shape[0], img_BW.shape[1])
-    minimumArea = shorterSide * shorterSide / 5
+    thresholdArea = shorterSide * shorterSide / 5
+    fourVertexes = []
 
     contoursList, hierarchy = cv2.findContours(img_openClosed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    # questi servono a trovare il rettangolo più grande, nel malaugurato caso ce ne sia più di uno
-    fourVertexes = []
-    thresholdArea = minimumArea
 
     for contour in contoursList:
         area = cv2.contourArea(contour)
@@ -94,34 +93,50 @@ def getFrameVertexes(img_BW):
 
     if len(fourVertexes) != 4:
         raise ValueError()
+    fourVertexes = [vertex[0] for vertex in fourVertexes]
 
     # 5 SORT VERTEXES
-    # li ordino a modo mio, in modo che seguano un ordine circolare
-    sortedVertexes = []
-    sortVertexes(fourVertexes, sortedVertexes)
+    # li ordino in modo che seguano un ordine circolare partendo dal pivot
+    # il pivot point ha queste proprietà: appartiene al lato più lungo del quadrilatero ed è il primo dei due in base all'ordine del vettore
+    sortedVertexes = sortVertexes(fourVertexes)
 
     return sortedVertexes
 
 
-'''Lo scopo di questa funzione è quello restituire in output il vettore colle nuove posizioni dei vertici per fare il wrap'''
+'''Lo scopo di questa funzione è quello restituire in output il vettore colle nuove posizioni dei vertici per fare il wrap,
+in modo che il nuovo quadrilatero che formeranno avrà la size desiderata.
+Per farlo sposto tutti i vertici tranne il pivot (quindi ne sposto 3)'''
 def getNewFrameVertexes(sortedVertexes):
-    # 1 FINAL FRAME SIZE
-    # il mio pivot point ha queste proprietà: appartiene al lato più lungo del quadrilatero ed è il primo dei due in base all'ordine del vettore
-    pivotVertexIndex = longestSideVertexIndex(sortedVertexes)
-    finalWidthVector, finalHeightVector = finalDimensions(sortedVertexes, pivotVertexIndex)
-
-    # 2 NEW VERTEXES
     newSortedVertexes = sortedVertexes.copy()
-    getNewSortedVertexes(sortedVertexes, newSortedVertexes, pivotVertexIndex, finalWidthVector, finalHeightVector)
+
+    # "vector" nel senso che non è un valore assoluto ma è con segno
+    finalWidthVector, finalHeightVector = croppedDimensions(sortedVertexes)
+    pivotVertex = sortedVertexes[0]
+    followingVertex = sortedVertexes[1]
+
+    newSortedVertexes[0] = pivotVertex
+
+    # devo capire dove sta il pivot (alto, basso, SX, DX) e lo capisco confrontandolo col suo successore
+    xDifference = abs(pivotVertex[0] - followingVertex[0])
+    yDifference = abs(pivotVertex[1] - followingVertex[1])
+    if xDifference < yDifference:
+        # i punti sono uno sopra l'altro'
+        newSortedVertexes[1] = pivotVertex + [0, finalHeightVector]
+        newSortedVertexes[2] = pivotVertex + [finalWidthVector, finalHeightVector]
+        newSortedVertexes[3] = pivotVertex + [finalWidthVector, 0]
+    else:
+        newSortedVertexes[1] = pivotVertex + [finalWidthVector, 0]
+        newSortedVertexes[2] = pivotVertex + [finalWidthVector, finalHeightVector]
+        newSortedVertexes[3] = pivotVertex + [0, finalHeightVector]
 
     return newSortedVertexes
 
 
 '''Questa funzione riordina i vertici del quadrilatero in modo da averli adiacenti uno dopo l'altro.
 Non so se alla fine sono in ordine orario o antioriario, nè in che posizione sia il primo, ma non mi interessa'''
-def sortVertexes(vertexes, sortedVertexes):
-    # li metto tutti in un vettore per lavorarci meglio
-    vertexesList = [ vertex for vertex in vertexes]
+def sortVertexes(vertexes):
+    sortedVertexes = []
+    vertexesList = vertexes.copy()
 
     # parto da uno a caso e itero cercando di volta in volta il vertice più vicino
     currentVertex = vertexesList.pop()
@@ -130,7 +145,7 @@ def sortVertexes(vertexes, sortedVertexes):
         closestIndex = None
         closestDistance = None
 
-        for index in range (0, len(vertexesList)):
+        for index in range(len(vertexesList)):
             distance = cv2.norm(currentVertex - vertexesList[index], normType = cv2.NORM_L2)
             if closestDistance is None or distance < closestDistance:
                 closestDistance = distance
@@ -140,7 +155,13 @@ def sortVertexes(vertexes, sortedVertexes):
         vertexesList.pop(closestIndex)
         sortedVertexes.append(currentVertex)
 
-    return
+    # voglio che il pivot vertex sia il primo
+    pivotVertexIndex = longestSideVertexIndex(sortedVertexes)
+    for i in range(pivotVertexIndex):
+        firstVertex = sortedVertexes.pop(0)
+        sortedVertexes.append(firstVertex)
+
+    return sortedVertexes
 
 '''dato un vettore di vertici mi ritorna l'indice del vettore che collegato col suo successore
 forma il lato più lungo del quadrilatero'''
@@ -148,7 +169,7 @@ def longestSideVertexIndex(vertexes):
     indexMax = 0
     distanceMax = 0
 
-    for index in range(0, len(vertexes)):
+    for index in range(len(vertexes)):
         vertex1 = vertexes[index]
         vertex2 = vertexes[(index + 1) % len(vertexes)]
 
@@ -160,22 +181,19 @@ def longestSideVertexIndex(vertexes):
     return indexMax
 
 '''Riceve in input 4 vertici del quadrilatero sbilenco e mi calcola quale sarà la dimensione del quadrilatero finale
-restituendo in output width e height'''
-def finalDimensions(sortedVertexes, pivotVertexIndex):
-    widthVector = 0
-    heightVector = 0
+restituendo in output width e height con segno rispetto al pivot'''
+def croppedDimensions(sortedVertexes):
+    # Parto dal pivot vertex e guardo com'è messo (orizzontale verticale) in base agli altri 2 vertci che gli stanno vicini
+    previousVertex = sortedVertexes[3]
+    currentVertex = sortedVertexes[0]
+    followingVertex = sortedVertexes[1]
 
-    #Parto dal pivot vertex e guardo com'è messo (orizzontale verticale) in base agli altri 2 vertci che gli stanno vicini
-    # per ragioni di datatype, ogni vertex è in realtà vettore di punti (con un solo punto) e per questo aggiungo uno [0] alla fine
-    previousVertex = sortedVertexes[(pivotVertexIndex - 1) % len(sortedVertexes)][0]
-    currentVertex = sortedVertexes[pivotVertexIndex][0]
-    followingVertex = sortedVertexes[(pivotVertexIndex + 1) % len(sortedVertexes)][0]
-
-    distance1 = cv2.norm(currentVertex - followingVertex, normType=cv2.NORM_L2)
-    distance2 = cv2.norm(currentVertex - previousVertex, normType=cv2.NORM_L2)
+    distance1 = cv2.norm(currentVertex - followingVertex, normType = cv2.NORM_L2)
+    distance2 = cv2.norm(currentVertex - previousVertex, normType = cv2.NORM_L2)
 
     xDifference = abs(currentVertex[0] - followingVertex[0])
     yDifference = abs(currentVertex[1] - followingVertex[1])
+
     # prima devo capire quali coppie di punti dovrebbero essere in verticale e quale in orizzontale ...
     if xDifference < yDifference:
         # poi devo capire quale dei 2 sta sopra l'altro, da sapere come sono posizionati l'uno rispetto all'altro
@@ -204,61 +222,38 @@ def finalDimensions(sortedVertexes, pivotVertexIndex):
     return int(widthVector), int(heightVector)
 
 
-'''Qui l'obiettivo è spostare i vertici in modo che il nuovo quadrilatero che formeranno avrà la size desiderata.
-Per farlo sposto tutti i vertici tranne il pivot (quindi ne sposto 3)'''
-def getNewSortedVertexes(sortedVertexes, newSortedVertexes, pivotVertexIndex, finalWidthVector, finalHeightVector):
-    pivotVertex = sortedVertexes[pivotVertexIndex]
-
-    currentVertex = sortedVertexes[pivotVertexIndex][0]
-    followingVertex = sortedVertexes[(pivotVertexIndex + 1) % len(sortedVertexes)][0]
-
-    # devo capire dove sta il pivot (alto, basso, SX, DX) e lo capisco confrontandolo col suo successore
-    xDifference = abs(currentVertex[0] - followingVertex[0])
-    yDifference = abs(currentVertex[1] - followingVertex[1])
-    if xDifference < yDifference:
-        # i punti sono uno sopra l'altro'
-        newSortedVertexes[(pivotVertexIndex + 1) % 4] = pivotVertex + [0, finalHeightVector]
-        newSortedVertexes[(pivotVertexIndex + 2) % 4] = pivotVertex + [finalWidthVector, finalHeightVector]
-        newSortedVertexes[(pivotVertexIndex + 3) % 4] = pivotVertex + [finalWidthVector, 0]
-    else:
-        newSortedVertexes[(pivotVertexIndex + 1) % 4] = pivotVertex + [finalWidthVector, 0]
-        newSortedVertexes[(pivotVertexIndex + 2) % 4] = pivotVertex + [finalWidthVector, finalHeightVector]
-        newSortedVertexes[(pivotVertexIndex + 3) % 4] = pivotVertex + [0, finalHeightVector]
-
-    return
-
-'''Serve a trovare l'indice del vertice in alto a destra partendo da 4 vertici disposti a rettangolo'''
+'''Serve a trovare il vertice in alto a sinistra partendo da 4 vertici disposti a rettangolo'''
 def getHighSX(vertexes):
     minIndex = 0
-    minValue = cv2.norm(vertexes[minIndex], normType=cv2.NORM_L2)
+    minValue = cv2.norm(vertexes[minIndex], normType = cv2.NORM_L2)
 
     for index in range (1, 4):
-        value = cv2.norm(vertexes[index], normType=cv2.NORM_L2)
+        value = cv2.norm(vertexes[index], normType = cv2.NORM_L2)
         if value < minValue:
             minIndex = index
             minValue = value
 
-    return minIndex
+    return vertexes[minIndex]
 
 
 def cropImage(img, croppedVertexes):
-    highSXCroppedPointIndex = getHighSX(croppedVertexes)
-    highSXCroppedPoint = croppedVertexes[highSXCroppedPointIndex]
-    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
-    croppedWidth, croppedHeight = finalDimensions(croppedVertexes, highSXCroppedPointIndex)
+    highSXCroppedPoint = getHighSX(croppedVertexes)
+    croppedWidth, croppedHeight = croppedDimensions(croppedVertexes)
+    croppedWidth = abs(croppedWidth)
+    croppedHeight = abs(croppedHeight)
 
-    img_cropped = img[highSXCroppedPoint[0][1]: highSXCroppedPoint[0][1] + croppedHeight, highSXCroppedPoint[0][0]: highSXCroppedPoint[0][0] + croppedWidth]
+    img_cropped = img[highSXCroppedPoint[1]: highSXCroppedPoint[1] + croppedHeight, highSXCroppedPoint[0]: highSXCroppedPoint[0] + croppedWidth]
 
     return img_cropped
 
 def cropImageInverse(oldImg, croppedImg, CroppedVertexes):
-    highSXCroppedePointIndex = getHighSX(CroppedVertexes)
-    highSXCroppedPoint = CroppedVertexes[highSXCroppedePointIndex]
-    # questa funzione non era stata pensata per questo, ma mi torna comodo anche così
-    croppedWidth, croppedHeight = finalDimensions(CroppedVertexes, highSXCroppedePointIndex)
+    highSXCroppedPoint = getHighSX(CroppedVertexes)
+    croppedWidth, croppedHeight = croppedDimensions(CroppedVertexes)
+    croppedWidth = abs(croppedWidth)
+    croppedHeight = abs(croppedHeight)
 
     newImg = oldImg.copy()
-    newImg[highSXCroppedPoint[0][1]: highSXCroppedPoint[0][1] + croppedHeight, highSXCroppedPoint[0][0]: highSXCroppedPoint[0][0] + croppedWidth] = croppedImg
+    newImg[highSXCroppedPoint[1]: highSXCroppedPoint[1] + croppedHeight, highSXCroppedPoint[0]: highSXCroppedPoint[0] + croppedWidth] = croppedImg
 
     return newImg
 
@@ -276,6 +271,6 @@ def getInverseWarpedImage(img_original, img_warped, newSortedVertexes, oldSorted
     # il parametro axis riguarda la gerarchia con cui viene verificato se la condizione è vera o falsa
     # la condizione si basa sul colore
     colors_match = np.all(img_unwarped < 200, axis = 2)
-    img_unwarped[colors_match] = img_original
+    img_unwarped[colors_match] = img_original[colors_match]
 
     return img_unwarped

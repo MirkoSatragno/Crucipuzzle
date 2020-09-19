@@ -118,6 +118,8 @@ def getTemplatesAndMasks(word, lettersDictionary):
     return templates, masks
 
 
+'''Questa funzione controlla se all'interno di una certa immagine è presente un template, tenendo conto della mashera.
+Ritorna un booleano di successo di ritrovamento e la posizione dove è stato trovato'''
 def matchMaskedTemplate(templates, masks, index, img):
     template = templates[index].astype(np.uint8)
     mask = masks[index].astype(np.uint8)
