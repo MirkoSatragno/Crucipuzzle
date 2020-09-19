@@ -13,7 +13,7 @@ from Libraries import ocr2Library as ocrLib
 '''Questa funzione serve ad acquisire un'immagine da file.
 Restituisce un immagine in BGR'''
 def getBGRPicture():
-    file_path = filedialog.askopenfilename(title = "Select image", initialdir = "./../Sample pictures")
+    file_path = filedialog.askopenfilename(title = "Select image", initialdir = "./../Sample pictures", filetypes=[("Image", ".jpg .png")])
     img_BGR = cv2.imread(file_path)
     if img_BGR is None:
         raise FileNotFoundError()

@@ -42,8 +42,8 @@ Non esegue ancora il riconoscimento vero e proprio, però lo sfrutta a suo modo 
 Alla fine restituisce un oggetto di tipo PreOCRParameters che contiene dati sul puzzle che servono ad effettuare poi il riconoscimento vero e proprio.'''
 def OCRPrecomputation(img_BGR):
     # 1 THRESHOLD
-    img_BGR = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
-    img_thresh = cv2.adaptiveThreshold(img_BGR, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
+    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
+    img_thresh = cv2.adaptiveThreshold(img_BW, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
 
 
     # 2 GET CHARACTERS LIST
