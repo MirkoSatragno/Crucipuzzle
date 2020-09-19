@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from . import plotLibrary as plotLib
 
 '''Questo mi contiene in maniera elegante i parametri che poi mi serviranno  per i procedimenti inversi di warp e crop'''
 class processedPicture:
@@ -33,6 +32,8 @@ def processImage(img_BGR):
     return processedPicture(img_warped, img_cropped, sortedVertexes, newSortedVertexes)
 
 
+'''Ricevo l'immagine colla ROI del puzzle e le linee aggiuntive delle parole trovate 
+e devo ritrasformarla in base alle coordinate originali'''
 def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
     # 1 CROP INVERSO
     img_crop_lines = cropImageInverse(processedPictureWrapper.img_warped, img_cropped_lines, processedPictureWrapper.newVertexes)
@@ -43,28 +44,6 @@ def getFinalImage(img_BGR, img_cropped_lines, processedPictureWrapper):
     return img_lines
 
 
-# mi aspetto un'immaigne in binco e nero
-def preprocessingOCRImage(img):
-    # tutti 'sti valori sono stati trovati in maniera empirica ... a tentativi e forza bruta
-    # 0 LINEAR IMAGE LENGTH
-    linearImageLength = min([img.shape[0],img.shape[1]])
-
-    # 1 BLUR
-    #img = cv2.GaussianBlur(img, (3, 3), 0)
-
-    # 2 ADAPTIVE THRESHOLDING
-    boxSize = int(linearImageLength * 22/ 800) * 2 + 3
-    offsetValue = int(linearImageLength * 70/10000) * 2 + 3
-    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C , cv2.THRESH_BINARY_INV, boxSize, offsetValue)
-
-    # 3 CLOSURE
-    closeKernelSize2 = int(linearImageLength / 1500) * 2 + 1
-    closeKernel = np.ones((closeKernelSize2, closeKernelSize2))
-    img_closed = cv2.morphologyEx(img_thresh, cv2.MORPH_CLOSE, closeKernel, iterations = 1)
-
-    img_closed = 255 - img_closed
-
-    return img_closed
 
 ############################################## PRIVATE METHODS ##########################################################
 # in realtà sono tutti public, ma volevo distinguere visivamente tra quali devono essere chiamati all'esterno e quali no
@@ -283,23 +262,20 @@ def cropImageInverse(oldImg, croppedImg, CroppedVertexes):
 
     return newImg
 
-def getWarpedImage(img_RGB, sortedVertexes, newSortedVertexes):
-
+def getWarpedImage(img_BGR, sortedVertexes, newSortedVertexes):
     croppedMatrix = cv2.getPerspectiveTransform(np.asarray(sortedVertexes, np.float32), np.asarray(newSortedVertexes, np.float32))
-    img_warped = cv2.warpPerspective(img_RGB, croppedMatrix, (img_RGB.shape[1], img_RGB.shape[0]))
+    img_warped = cv2.warpPerspective(img_BGR, croppedMatrix, (img_BGR.shape[1], img_BGR.shape[0]))
 
     return img_warped
 
 
 def getInverseWarpedImage(img_original, img_warped, newSortedVertexes, oldSortedVertexes):
-
-    # questa è ancora troncata
+    # questa immagine è ancora troncata ai bordi per colpa del warp diretto che ha fatto perdere informazioni
     img_unwarped = getWarpedImage(img_warped, newSortedVertexes, oldSortedVertexes)
 
-    # axis ha a che fare col metodo di riduzione, perchè se non lo specifico mi restituisce un univo boolean finale per tutta la matrix
-    # non sono certo del perchè vada = 2, ma mi sembra fondamentale altrimenti non funziona
+    # il parametro axis riguarda la gerarchia con cui viene verificato se la condizione è vera o falsa
+    # la condizione si basa sul colore
     colors_match = np.all(img_unwarped < 200, axis = 2)
-    img_unwarped[colors_match] = img_original[colors_match]
+    img_unwarped[colors_match] = img_original
 
     return img_unwarped
-

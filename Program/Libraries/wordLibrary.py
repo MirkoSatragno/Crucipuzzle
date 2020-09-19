@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+# regular expression
 import re
 
 
@@ -19,19 +20,20 @@ def getLettersDictionary():
 def isWordValid(string):
     if len(string) < 2:
         return False
+    # controllo che non ci siano caratteri al di fuori delle normali lettere
     return re.search(r"[^A-Za-z]", string) is None
 
 
+'''Trasformo una matrice di oggetti CharacterWrapper in un'immagine di grigi.
+In input riceve anche il dizionario colla codifica delle lettere'''
 def matrixToGrayscale(lettersDictionary, matrix):
 
     grayMatrix = np.zeros((len(matrix), len(matrix[0])), np.uint8)
     for rowIndex in range(len(matrix)):
         for columnIndex in range(len(matrix[0])):
-
             grayMatrix[rowIndex][columnIndex] = int(lettersDictionary[matrix[rowIndex][columnIndex]])
 
     return grayMatrix
-
 
 
 '''Questo è l'algoritmo che cerca una parola dentro l'immagine grigia.

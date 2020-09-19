@@ -1,9 +1,6 @@
 import cv2
 import pytesseract
 import statistics
-import matplotlib.pyplot as plot
-
-from Libraries import frameLibrary as frameLib
 
 # Mention the installed location of Tesseract-OCR in your system
 pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
@@ -12,7 +9,7 @@ pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesserac
 
 ################################## PUBLIC METHODS ###############################################
 
-
+'''In questo oggetto immagazzino le informazioni generali sull'immagine del puzzle, estrapolate tramite alla pre-elaborazione'''
 class PreOCRParameters:
     def __init__(self, rows, columns, left, top, right, bottom):
         self.rows = rows
@@ -26,6 +23,19 @@ class PreOCRParameters:
         self.meanWidth = (right - left)/(columns - 1)
         self.meanHeight = (bottom - top)/(rows - 1)
 
+
+'''Questa classe serve a lavorare in maniera più comoda con un singolo carattere riconosciuto'''
+class CharacterWrapper:
+    def __init__(self, char, left, top, right, bottom):
+        self.char = char
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
+
+        self.width = right - left
+        self.height = top - bottom
+        self.pos = [int((right + left)/2), int((bottom + top)/2)]
 
 
 '''Questa funzione serve ad estrapolare dei parametri utili al riconoscimento dei caratteri del puzzle.
@@ -105,19 +115,6 @@ def OCRComputation(img_BGR, preParameters):
 
 ################################## PRIVATE METHODS ###############################################
 # in realtà non sono privati. E' una distinzione estetica
-
-class CharacterWrapper:
-    def __init__(self, char, left, top, right, bottom):
-        self.char = char
-        self.left = left
-        self.top = top
-        self.right = right
-        self.bottom = bottom
-
-        self.width = right - left
-        self.height = top - bottom
-        self.pos = [int((right + left)/2), int((bottom + top)/2)]
-
 
 '''E' un metodo abbastanza preciso per trovare il numero di righe di un puzzle.
 Riceve in input un'immagine binaria'''

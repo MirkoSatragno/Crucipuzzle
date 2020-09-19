@@ -1,5 +1,4 @@
 import cv2
-import numpy as np
 import threading
 
 '''Questa classe definisce il thread da lanciare
