@@ -1,227 +1,330 @@
-import math
 import cv2
 import pytesseract
-import numpy as np
-from Libraries import frameLibrary as frameLib
+import statistics
 
 # Mention the installed location of Tesseract-OCR in your system
 pytesseract.pytesseract.tesseract_cmd = 'C:/Program Files/Tesseract-OCR/tesseract.exe'
-'''
-Expect crucipuzzle cropped opencv image
-Returns matrix of grayscale pixels, each pixel corresponds to a letter, check wordLibrary.py for further details
-    and also data matrix with chars, positions and sizes organized as follows:
-    matrix: {
-        'rowVPos':[], # matrix['rowVPos'][i] is vertical coordinate of i-th row
-        'rows':{ # matrix['rows'][i] is i-th row
-            'chars':[], # matrix['rows'][i]['chars'][j] is j-th character of i-th row
-            'charHPos':[] # matrix['rows'][i]['charHPos'][j] is j-th character of i-th row horizontal position
-        },
-        'dims':[[(h,w)]] # matrix['dims'][i][j] are j-th character of i-th row sizes in a tuple: (height, width)
-    }
-'''
-def getCharMap(img=None, debug=False):
-    d, img = ImgToPytesseractDict(img)
 
 
-    if debug:
-        # Used only for developer visualization
-        imgPreFilter = np.ones((img.shape[0], img.shape[1], 3), np.uint8)
-        imgPreFilter[:] = 255
-        imgPostFilter = imgPreFilter.copy()
-        # print(d)
-        matrix, charPerRow = ReorderDictIntoMatrix(d, img, imgPreFilter, debug)
-    else:
-        matrix, charPerRow = ReorderDictIntoMatrix(d, img)
+'''In questo oggetto immagazzino le informazioni generali sull'immagine del puzzle, estrapolate tramite alla pre-elaborazione'''
+class PreOCRParameters:
+    def __init__(self, rows, columns, left, top, right, bottom):
+        self.rows = rows
+        self.columns = columns
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
+
+        # non li casto a int o poi mi trascino dietro errori di approssimazione che crescono linearmente
+        self.meanWidth = (right - left)/(columns - 1)
+        self.meanHeight = (bottom - top)/(rows - 1)
 
 
-    matrix = RemoveOutliers(matrix, charPerRow, img)
+'''Questa classe serve a lavorare in maniera più comoda con un singolo carattere riconosciuto'''
+class CharacterWrapper:
+    def __init__(self, char, left, top, right, bottom):
+        self.char = char
+        self.left = left
+        self.top = top
+        self.right = right
+        self.bottom = bottom
 
-    # Prepare empty pixel matrix
-    charMap = np.ones((len(matrix['rows']), charPerRow, 1), np.uint8)
-    if debug:
-        scale = 50
-        charMapScaled = np.ones((len(matrix['rows']) * scale, charPerRow * scale, 1), np.uint8)
-
-    # Map char matrix to pixel matrix
-    for i in range(0, len(matrix['rows'])):
-        for j in range(0, len(matrix['rows'][i]['chars'])):
-            charMap[i, j] = (ord(matrix['rows'][i]['chars'][j]) - ord('A')) * 10
-            if debug:  # Enlarged pixel matrix, just for developer visualization
-                cv2.putText(imgPostFilter, matrix['rows'][i]['chars'][j],
-                            (math.floor( matrix['rows'][0]['charHPos'][j] if len(matrix['rows'][0]['chars']) > j else matrix['rows'][i]['charHPos'][j]),
-                             math.floor(matrix['rowVPos'][i])), cv2.FONT_HERSHEY_SIMPLEX, .4, 0)
-                charMapScaled[(i * scale):((i + 1) * scale), (j * scale):((j + 1) * scale)] = (ord(
-                    matrix['rows'][i]['chars'][j]) - ord('A')) * 10
-    if debug:
-        cv2.imshow('img', img)
-        cv2.imshow('img2', imgPreFilter)
-        cv2.imshow('img3', imgPostFilter)
-        cv2.imshow('charMap', charMap)
-        cv2.imshow('charMapScaled', charMapScaled)
-        cv2.waitKey(0)
-
-    return charMap, matrix
+        self.width = right - left
+        self.height = top - bottom
+        self.pos = [int((right + left)/2), int((bottom + top)/2)]
 
 
-'''
-Convert a cropped img into pytesseract char+bounding rect dictionary
-In case no image is passed it reads a default one
-Returns dictionary and image
-'''
+################################## PUBLIC METHODS ###############################################
+
+'''Questa funzione serve ad estrapolare dei parametri utili al riconoscimento dei caratteri del puzzle.
+Non esegue ancora il riconoscimento vero e proprio, però lo sfrutta a suo modo per ottenere le informazioni che le servono.
+Alla fine restituisce un oggetto di tipo PreOCRParameters che contiene dati sul puzzle che servono ad effettuare poi il riconoscimento vero e proprio.'''
+def OCRPrecomputation(img_BGR):
+    # 1 THRESHOLD
+    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
+    img_thresh = cv2.adaptiveThreshold(img_BW, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
 
 
-def ImgToPytesseractDict(img):
-    if img is None:
-        img_path = '../../Sample pictures/sample5.jpg'
-        img = cv2.imread(img_path)
-        img = frameLib.processImage(img).img_cropped
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # cv2.imshow('img', img)
-    img_thresh = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 81, 15)
+    # 2 GET CHARACTERS LIST
+    # ottengo una lista di CharacterWrapper, con solo caratteri di dimensione media simile fra loro.
+    # L'obiettivo è identificare solo i caratteri che sono stati riconosciuti con certezza, escludendo via via quelli incerti.
+    charactersList = getCharactersLists(img_thresh)
+    charactersList_Filtered = filterBySize(charactersList)
 
-    cv2.imshow('img', img_thresh)
-    cv2.waitKey(0)
 
-    custom_oem_psm_config = r'--psm 6'
-    d = pytesseract.image_to_boxes(img_thresh, output_type=pytesseract.Output.DICT, config=custom_oem_psm_config)
-    return d, img_thresh
+    # 3 CHARACTERS MATRIXES
+    # trasformo la lista di caratteri in 2 matrici di caratteri: una lista di righe ed una lista di colonne
+    # Di nuovo, non ci sono tutti i caratteri, ma solo quelli che ho filtrato prima
+    horizontalMatrix = getHorizontalMatrix(charactersList_Filtered)
+    verticalMatrix = getVerticalMatrix(charactersList_Filtered)
+
+
+    # 4 PUZZLE PARAMETERS
+    # uso la getRowsNumber perchè ho visto che in media da risultati più accurati
+    rows = getRowsNumber(img_thresh)
+    columns = len(verticalMatrix)
+
+    top, bottom = getMatrixMeanMinMeanMax(horizontalMatrix, 1)
+    left, right = getMatrixMeanMinMeanMax(verticalMatrix, 0)
+
+    return PreOCRParameters(rows, columns, left, top, right, bottom)
 
 
 
-'''
-Receive a pytesseract dictionary (chars+bounding rect coordinates), opencv image, opencv image blank copy (optional)
-Returns a dictionary with a list of Y coordinate for each row, a list of rows, in which there are char and X coordinate for each char
-If the blank copy is passed it is filled with recognized characters
-'''
-def ReorderDictIntoMatrix(d, img, imgPreFilter = None, debug = False):
-    n_boxes = len(d['char'])
-    matrix = {'rows': [],
-              'rowVPos': [],
-              'dims': []}
-    for i in range(n_boxes):
-        (c, left, top, right, bottom) = (
-            d['char'][i], d['left'][i], img.shape[0] - d['top'][i], d['right'][i], img.shape[0] - d['bottom'][i])
-        color = (0, 0, 255)
-        y = (top + bottom) / 2
-        x = (left + right) / 2
-        if debug:
-            print(c, left, top, right, bottom)
-        if c == '!':
-            c = 'I'
-        if not c.isalnum():
-            continue
-        if c.islower():
-            c = c.upper()
-        if c == '1':
-            c = 'I'
-        if (c == 'L' or c == 'T' or c == 'E' or c == 'P' or c == 'S') and right - left < (bottom - top) / 2:
-            c = 'I'
-        if c == '8':
-            c = 'S'
-        if not c.isalpha():
-            continue
+'''Questa è la vera e propria funzione che si occupa di riconoscere i caratteri del puzzle.
+Riceve in input l'immagine ed un oggetto che contiene dei parametri estrapolati grazie alla funzione di OCRPrecomputation.
+Il risultato è una matrice di caratteri'''
+def OCRComputation(img_BGR, preParameters):
 
-        if debug:
-            cv2.rectangle(img, (left, bottom), (right, top), color, 1)
-            # cv2.imshow('img', img)
-            # cv2.waitKey(0)
-        if imgPreFilter is not None:
-            cv2.putText(imgPreFilter, c, (left, bottom), cv2.FONT_HERSHEY_SIMPLEX, .4, (255, 0, 255))
-            # cv2.imshow('img2', imgPreFilter)
-            # cv2.waitKey(0)
+    '''La funzione opera il riconoscimento di caratteri lavorando su di loro singolarmente.
+    Ogni immagine di carattere viene ritagliata e poi con pytesseract si prova a riconoscere il contenuto.
+    Riusciamo a ritagliare con buona precisione i singoli caratteri grazie al risultato del preprocessing'''
+    img_BW = cv2.cvtColor(img_BGR, cv2.COLOR_BGR2GRAY)
 
-            # print(c)
-            # print(img.shape[0])
+    # preparo i parametri base per ritagliare una a una le immagini delle singole lettere da riconoscere
+    left0 = preParameters.left - int(preParameters.meanWidth / 2)
+    right0 = preParameters.left + int(preParameters.meanWidth / 2)
+    top0 = preParameters.top - int(preParameters.meanHeight / 2)
+    bottom0 = preParameters.top + int(preParameters.meanHeight / 2)
 
-        inserted = False
-        for j in range(0, len(matrix['rowVPos'])):
-            # print('y ' + y.__str__())
-            # print('top ' + top.__str__())
-            # print('bottom ' + bottom.__str__())
-            # print('matrix ' + matrix['rowVPos'][j].__str__() + ' j ' + j.__str__())
-            if top - (bottom - top)/2 < matrix['rowVPos'][j] < bottom + (bottom - top)/2:
-                inserted = True
-                # print('inserted')
-                matrix['rows'][j]['chars'].append(c)
-                matrix['rows'][j]['charHPos'].append(x)
-                matrix['dims'][j].append((bottom-top, right-left))
-                # print(matrix['rows'])
-            else:
-                # print('not inserted')
-                c = c
-        if not inserted:
-            # print('y ' + y.__str__())
-            # print('top ' + top.__str__())
-            # print('bottom ' + bottom.__str__())
-            # print('matrix ' + len(matrix['rowVPos']).__str__())
-            matrix['rowVPos'].append(y)
-            matrix['rows'].append({'chars': [c], 'charHPos': [x]})
-            matrix['dims'].append([(bottom-top, right-left)])
-            # print(matrix['rows'])
+    matrix = []
 
-    if debug:
-        cv2.imshow('img', img)
-        cv2.waitKey(0)
-        print(len(matrix['rows']))
+    # con un doppio ciclo riempo la matrice coi caratteri riconosciuti uno a uno
+    for rowIndex in range(preParameters.rows):
+        matrix.append([])
 
-    charCount = 0
-    for i in range(0, len(matrix['rows'])):
-        sorted_chars = [x for _, x in sorted(zip(matrix['rows'][i]['charHPos'], matrix['rows'][i]['chars']))]
-        sorted_pos = [x for x, _ in sorted(zip(matrix['rows'][i]['charHPos'], matrix['rows'][i]['chars']))]
-        sorted_dims = [x for _, x in sorted(zip(matrix['rows'][i]['charHPos'], matrix['dims'][i]))]
-        # print(sorted_chars, len(sorted_chars))
-        # print(sorted_pos)
-        matrix['rows'][i]['chars'] = sorted_chars
-        matrix['rows'][i]['charHPos'] = sorted_pos
-        matrix['dims'][i] = sorted_dims
-        charCount += len(sorted_chars)
-        if debug:
-            print(matrix['rowVPos'][i])
-            print(matrix['rows'][i])
-            print(matrix['dims'][i])
-    sorted_rows = [x for _, x in sorted(zip(matrix['rowVPos'], matrix['rows']))]
-    sorted_rowVPos = [x for x, _ in sorted(zip(matrix['rowVPos'], matrix['rows']))]
-    sorted_dimsRow = [x for _, x in sorted(zip(matrix['rowVPos'], matrix['dims']))]
-    matrix['rows'] = sorted_rows
-    matrix['rowVPos'] = sorted_rowVPos
-    matrix['dims'] = sorted_dimsRow
+        # non faccio una somma incrementale ma me lo moltiplico ogni volta per evitare errori di approssimazione castando a int
+        top1 = max(top0 + int(preParameters.meanHeight * rowIndex), 0)
+        bottom1 = min(bottom0 + int(preParameters.meanHeight * rowIndex), img_BW.shape[0])
 
-    charPerRow = math.floor(charCount / len(matrix['rows']))
-    return matrix, charPerRow
+        for columnIndex in range(preParameters.columns):
+            left1 = max(left0 + int(preParameters.meanWidth * columnIndex), 0)
+            right1 = min(right0 + int(preParameters.meanWidth * columnIndex), img_BW.shape[1])
 
-'''
-Receives a matrix in the format returned in ReorderDictIntoMatrix
-Removes from each row that has more characters than other rows the character (or characters) that is too close to other characters
-Returns polished matrix
-'''
-def RemoveOutliers(matrix, charPerRow, img, debug = False):
-    meanHeight = math.fsum([x for x in [item[0] for sublist in matrix['dims'] for item in sublist]]) / len(
-        ([item[0] for sublist in matrix['dims'] for item in sublist]))
-    meanWidth = math.fsum([y for y in [item[1] for sublist in matrix['dims'] for item in sublist]]) / len(
-        ([item[1] for sublist in matrix['dims'] for item in sublist]))
-    if debug:
-        print(meanHeight, meanWidth)
-    for i in range(0, len(matrix['rows'])):
-        while len(matrix['rows'][i]['chars']) > charPerRow:
-            minDistSides = img.shape[1] * 2
-            outlier = charPerRow
-            for j in range(0, len(matrix['rows'][i]['chars'])):
-                if matrix['dims'][i][j][0] < meanHeight/2:
-                    outlier = j
-                    break;
-                else:
-                    if 1 < j < len(matrix['rows'][i]['chars']) -1:
-                        distSides = matrix['rows'][i]['charHPos'][j + 1] - matrix['rows'][i]['charHPos'][j - 1]
-                        if distSides < minDistSides:
-                            minDistSides = distSides
-                            outlier = j
-            if debug:
-                print(matrix['dims'][i][j])
-            del matrix['rows'][i]['chars'][outlier]
-            del matrix['rows'][i]['charHPos'][outlier]
-            del matrix['dims'][i][j]
-        if debug:
-            print(matrix['rows'][i]['chars'])
+            img_crop = img_BW[top1: bottom1, left1: right1]
+            char = recognizeCharacter(img_crop)
+            matrix[rowIndex].append(char)
+
+
     return matrix
 
-getCharMap(None, True)
+
+
+
+################################## PRIVATE METHODS ###############################################
+# in realtà non sono privati. E' una distinzione estetica
+
+'''E' un metodo abbastanza preciso per trovare il numero di righe di un puzzle.
+Riceve in input un'immagine binaria'''
+def getRowsNumber(img_thresh):
+    # data contiene una stringa unica con tutto il risultato
+    config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
+    data = pytesseract.image_to_string(img_thresh, config = config)
+
+    word_strings = [w for w in data.split("\n")]
+    word_strings = list(filter(lambda w: w != "\f", word_strings))
+
+    # filtro via tutte le righe troppo corte perchè verosimilmente sono outliers
+    meanLength = statistics.mean([len(word) for word in word_strings])
+    lengthThreshold = int(meanLength * 0.5)
+    word_strings = list(filter(lambda word: lengthThreshold < len(word), word_strings))
+    rowsNumber = len(word_strings)
+
+    return rowsNumber
+
+
+'''Questa funzione legge tutte le lettere possibili, le trasforma in oggetti CharacterWrapper e ne fa una lista.
+In input riceve un'immagine binaria del puzzle'''
+def getCharactersLists(img_thresh):
+    config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
+    data = pytesseract.image_to_boxes(img_thresh, config = config)
+
+    data_split = list([row] for row in data.split("\n"))
+    data_split_filtered = list(filter(lambda row: row[0] != "", data_split))
+    data_matrix = [[element for element in row[0].split(" ")] for row in data_split_filtered]
+
+    # il sistema di riferimento usato da pytesseract per le righe è invertito
+    charactersLists = [ CharacterWrapper(el[0], int(el[1]), img_thresh.shape[0] - int(el[2]), int(el[3]), img_thresh.shape[0] - int(el[4])) for el in data_matrix ]
+
+    return charactersLists
+
+
+'''Questo metodo riceve in input una lista di CharactersWrapper e deve filtrare via quelli troppo grandi e troppo piccoli.
+Il risultato è una lista di CharacterWrapper con solo caratteri di dimensione uniforme fra loro'''
+def filterBySize(charactersList):
+
+    # le I son troppo piccole e le scarto
+    chars_noI = list(filter(lambda el:  el.char != "I", charactersList))
+
+
+    # scarto tutte le aree troppo grandi o troppo piccole
+    charAreas = list(el.width * el.height for el in chars_noI)
+    meanArea = statistics.mean(charAreas)
+    chars_filteredAreas = list(filter(lambda el: el.width * el.height < meanArea * 1.5, chars_noI))
+    newCharAreas =  list(el.width * el.height for el in chars_filteredAreas)
+    newMeanArea = statistics.mean(newCharAreas)
+
+    while meanArea != newMeanArea:
+        meanArea = newMeanArea
+
+        chars_filteredAreas = list(filter(lambda el: meanArea * 0.5 < el.width * el.height < meanArea * 1.5, chars_filteredAreas))
+        newCharAreas = list(el.width * el.height for el in chars_filteredAreas)
+        newMeanArea = statistics.mean(newCharAreas)
+
+
+    # scarto tutte le aree con ampiezza troppo piccola
+    charWidths = list(el.width for el in chars_filteredAreas)
+    meanWidth = statistics.mean(charWidths)
+    chars_filteredWidth  = list(filter(lambda el: meanWidth * 0.7 <el.width < meanWidth * 1.4 , chars_filteredAreas))
+    newCharWidths = list(el.width for el in chars_filteredWidth)
+    newMeanWidth = statistics.mean(newCharWidths)
+
+    while meanWidth != newMeanWidth:
+        meanWidth = newMeanWidth
+
+        chars_filteredWidth = list(filter(lambda el: meanWidth * 0.7 < el.width < meanWidth * 1.4, chars_filteredWidth))
+        newCharWidths = list(el.width for el in chars_filteredWidth)
+        newMeanWidth = statistics.mean(newCharWidths)
+
+
+    # scarto tutte le aree con altezza troppo piccola
+    charHeights = list(el.width for el in chars_filteredWidth)
+    meanHeight = statistics.mean(charHeights)
+    chars_filteredHeight = list(filter(lambda el: meanHeight * 0.7 < el.width < meanHeight * 1.3, chars_filteredWidth))
+    newCharHeights = list(el.width for el in chars_filteredHeight)
+    newMeanHeight = statistics.mean(newCharHeights)
+
+    while meanHeight != newMeanHeight:
+        meanHeight = newMeanHeight
+
+        chars_filteredHeight = list(filter(lambda el: meanHeight * 0.7 < el.width < meanHeight * 1.3, chars_filteredHeight))
+        newCharHeights = list(el.width for el in chars_filteredHeight)
+        newMeanHeight = statistics.mean(newCharHeights)
+
+    return chars_filteredHeight
+
+
+
+'''Questa funzione serve a trasformare una lista di caratteri in una matrice di righe del puzzle'''
+def getHorizontalMatrix(charactersList):
+
+    '''Per riordinarle mi baso sull'assunzione che le lettere sono già ordinate per righe quando vengono riconosciute.
+    Tutto ciò che devo fare è capire dove finiscono le righe, perchè nelle varie righe non tutte e lettere sono state riconosciute'''
+    horizMatrix = []
+    rowIndex = 0
+    previousEl = None
+    for el in charactersList:
+        if len(horizMatrix) == 0:
+            horizMatrix.append([el])
+            previousEl = el
+            continue
+
+        if previousEl.pos[0] < el.pos[0]:
+            horizMatrix[rowIndex].append(el)
+            previousEl = el
+        else:
+            horizMatrix.append([el])
+            previousEl = el
+            rowIndex = rowIndex + 1
+
+    # alla fine filtro sulla lunghezza delle righe per rimuovere gli outliers
+    maxRowLength = max([len(row) for row in horizMatrix])
+    horizMatrix = list(filter(lambda row: maxRowLength * 0.5 < len(row), horizMatrix))
+
+    return horizMatrix
+
+
+'''Questa funzione serve alla funzione di getVerticalMatrix per capire se una lettera appartiene ad una specifica colonna'''
+def doesBelongToColumn(currentChar, vertMatrix, columnIndex):
+    lastCharAddedInColumn_Index = len(vertMatrix[columnIndex]) - 1
+    lastCharAddedInColumn = vertMatrix[columnIndex][lastCharAddedInColumn_Index]
+
+    if lastCharAddedInColumn.left < currentChar.pos[0] < lastCharAddedInColumn.right:
+        return True
+
+    return False
+
+
+'''Questa funzione serve a trasformare un lista di caratteri in una matrice di colonne del puzzle'''
+def getVerticalMatrix(charactersList):
+
+    # per dividerli in colonne confronto se la posizione di una lettera è compresa fra i limiti destro e sinistro della lettera sopra
+    vertMatrix = []
+    for el in charactersList:
+        found = False
+        for columnIndex in range(len(vertMatrix)):
+            # se riesco a piazzare una lettera solla alla lettera di una colonna già iniziata ce la piazzo
+            if doesBelongToColumn(el, vertMatrix, columnIndex) and not found:
+                vertMatrix[columnIndex].append(el)
+                found = True
+
+        # se non sono riuscito a piazzare la lettera in nessuna colonna esistente ne creo una nuova
+        if not found:
+            vertMatrix.append([el])
+
+    # alla fine filtro sull'altezza' delle colonne per rimuovere gli outliers
+    maxColumnLen = max([len(col) for col in vertMatrix])
+    vertMatrix = list(filter(lambda col: maxColumnLen * 0.5 < len(col), vertMatrix))
+
+    return vertMatrix
+
+
+'''Questa funzione serve a trovare gli estremi destro e sinistro, o alto e basso, dei caratteri di un puzzle.
+Per decidere se la funzione lavorerà sulle righe o sulle colonne riceve in input un indice'''
+def getMatrixMeanMinMeanMax(matrix, shapeIndex):
+    # questo array values contiene o le coordinate delle righe o le coordinate delle colonne
+    values = [ statistics.mean([ el.pos[shapeIndex] for el in array]) for array in matrix]
+    values = sorted(values)
+
+    return int(min(values)), int(max(values))
+
+
+
+'''Questa funzione riceve in input l'immagine in scala di grigi di un singolo carattere e deve riconoscerlo. L'output è il carattere riconosciuto'''
+def recognizeCharacter(img_char):
+    config = "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ --psm 6"
+
+    # serve giusto ad avere una size di dimensione dispari
+    thresholdBoxSize = int(img_char.shape[0] / 2) * 2 + 1
+    # questo valore serve a "filtrare" il risultato del thresholding (circa. Vedi documentazione di opencv per la descrizione seria)
+    offsetValue = 2
+
+    # faccio un po' di tentativi di riconoscimento adattivo cambiando parametri. Se dopo un po' di tentativi non riconosco nulla mi arrendo
+    while offsetValue < 10:
+
+        img_thresh = cv2.adaptiveThreshold(img_char, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, thresholdBoxSize, offsetValue * 10)
+        d = pytesseract.image_to_string(img_thresh, config = config)
+
+        if d != "\f":
+            # controllo di non aver riconosciuto più di un carattere. Nel qual caso continuo col while finchè non ne riconosco esattamente solo 1
+            characters = d.split("\n")[0]
+            if len(characters) == 1:
+                return characters[0]
+            if 1 < len(characters):
+                offsetValue = offsetValue + 1
+                continue
+
+
+        '''se fallisco nel trovare un carattere generico mi concentro sulla "I", 
+        perchè è quella più difficile da riconoscere con pytesseract, ma la più facile da riconoscere "a mano"'''
+        # inverto bianco/nero perchè pytesseract lavora col nero, opencv col bianco
+        img_thresh[:] = 255 - img_thresh
+
+        contoursList, _ = cv2.findContours(img_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contoursList:
+            area = cv2.contourArea(contour)
+            if 0 < area:
+                perimeter = cv2.arcLength(contour, True)
+                vertexes = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
+                # vogliamo solo quadrilateri, o simili
+                if len(vertexes) == 4 or len(vertexes) == 5:
+                    return "I"
+
+
+        # se ho fallito nel riconoscere anche la "I" ci riprovo con un nuovo thresholding
+        offsetValue = offsetValue + 1
+
+    # se arrivo alla fine senza aver riconosciuto nessun carattere lancio un'eccezione
+    raise Exception
+

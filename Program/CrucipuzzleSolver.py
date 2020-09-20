@@ -7,7 +7,7 @@ from tkinter import filedialog
 from Libraries import plotLibrary as plotLib
 from Libraries import frameLibrary as frameLib
 from Libraries import wordLibrary as wordLib
-from Libraries import ocr2Library as ocrLib
+from Libraries import ocrLibrary as ocrLib
 
 
 '''Questa funzione serve ad acquisire un'immagine da file.
